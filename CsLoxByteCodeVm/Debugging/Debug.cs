@@ -13,11 +13,11 @@ namespace CsLoxByteCodeVm.Debugging
         /// </summary>
         /// <param name="chunk">The chunk to disassemble</param>
         /// <param name="name">The name</param>
-        public static void DisassembleChunk(Chunk chunk, string name)
+        public static void DisassembleChunk(CodeChunk chunk, string name)
         {
             Console.WriteLine($"== {name} ==");
 
-            for (int offset = 0; offset < chunk.Code.Count; )
+            for (int offset = 0; offset < chunk.Code.Count;)
             {
                 offset = DisassembleInstruction(chunk, offset);
             }
@@ -29,9 +29,9 @@ namespace CsLoxByteCodeVm.Debugging
         /// <param name="chunk">The code chunk</param>
         /// <param name="offset">The code offset</param>
         /// <returns>The new offset</returns>
-        public static int DisassembleInstruction(Chunk chunk, int offset)
+        public static int DisassembleInstruction(CodeChunk chunk, int offset)
         {
-            Console.Write($"{offset:0000} " );
+            Console.Write($"{offset:0000} ");
 
             // Line number
             if (offset > 0 && chunk.Lines[offset] == chunk.Lines[offset - 1])
@@ -48,19 +48,33 @@ namespace CsLoxByteCodeVm.Debugging
             byte instruction = chunk.Code[offset];
             switch (instruction)
             {
-                case (byte)Chunk.OpCode.OP_CONSTANT:
+                case (byte)CodeChunk.OpCode.OP_CONSTANT:
                     return ConstantInstruction("OP_CONSTANT", chunk, offset);
-                case (byte)Chunk.OpCode.OP_ADD:
+                case (byte)CodeChunk.OpCode.OP_NIL:
+                    return SimpleInstruction("OP_NILL", offset);
+                case (byte)CodeChunk.OpCode.OP_TRUE:
+                    return SimpleInstruction("OP_TRUE", offset);
+                case (byte)CodeChunk.OpCode.OP_FALSE:
+                    return SimpleInstruction("OP_FALSE", offset);
+                case (byte)CodeChunk.OpCode.OP_EQUAL:
+                    return SimpleInstruction("OP_EQUAL", offset);
+                case (byte)CodeChunk.OpCode.OP_GREATER:
+                    return SimpleInstruction("OP_GREATER", offset);
+                case (byte)CodeChunk.OpCode.OP_LESS:
+                    return SimpleInstruction("OP_LESS", offset);
+                case (byte)CodeChunk.OpCode.OP_ADD:
                     return SimpleInstruction("OP_ADD", offset);
-                case (byte)Chunk.OpCode.OP_SUBTRACT:
+                case (byte)CodeChunk.OpCode.OP_SUBTRACT:
                     return SimpleInstruction("OP_SUBTRACT", offset);
-                case (byte)Chunk.OpCode.OP_MULTIPLY:
+                case (byte)CodeChunk.OpCode.OP_MULTIPLY:
                     return SimpleInstruction("OP_MULTIPLY", offset);
-                case (byte)Chunk.OpCode.OP_DIVIDE:
+                case (byte)CodeChunk.OpCode.OP_DIVIDE:
                     return SimpleInstruction("OP_DIVIDE", offset);
-                case (byte)Chunk.OpCode.OP_NEGATE:
+                case (byte)CodeChunk.OpCode.OP_NOT:
+                    return SimpleInstruction("OP_NOT", offset);
+                case (byte)CodeChunk.OpCode.OP_NEGATE:
                     return SimpleInstruction("OP_NEGATE", offset);
-                case (byte)Chunk.OpCode.OP_RETURN:
+                case (byte)CodeChunk.OpCode.OP_RETURN:
                     return SimpleInstruction("OP_RETURN", offset);
                 default:
                     Console.WriteLine($"Unknown opcode {instruction}");
@@ -87,7 +101,7 @@ namespace CsLoxByteCodeVm.Debugging
         /// <param name="chunk">The code chunk</param>
         /// <param name="offset">The code offset</param>
         /// <returns>The new offset</returns>
-        private static int ConstantInstruction(string name, Chunk chunk, int offset)
+        private static int ConstantInstruction(string name, CodeChunk chunk, int offset)
         {
             byte constant = chunk.Code[offset + 1];
             Console.Write($"{name,-16} {constant,4} '");
@@ -103,7 +117,21 @@ namespace CsLoxByteCodeVm.Debugging
         /// <param name="value">The value</param>
         public static void PrintValue(VmValue value)
         {
-            Console.Write($"{value.Value}");
+            switch (value.Type)
+            {
+                case Values.ValueType.VAL_BOOL:
+                    Console.Write(value.AsBoolean() ? "true": "false");
+                    break;
+                case Values.ValueType.VAL_NIL:
+                    Console.Write("nil");
+                    break;
+                case Values.ValueType.VAL_NUMBER:
+                    Console.Write($"{value.AsNumber()}");
+                    break;
+
+            }
+
+
         }
     }
 }

@@ -5,14 +5,14 @@ using System.Text;
 
 namespace CsLoxByteCodeVm.Code
 {
-    class Chunk
+    class CodeChunk
     {
         public List<byte> Code { get; }
         public List<int> Lines { get; }
         public ValueTable Constants { get; }
 
 
-        public Chunk()
+        public CodeChunk()
         {
             Code = new List<byte>();
             Lines = new List<int>();
@@ -52,10 +52,17 @@ namespace CsLoxByteCodeVm.Code
         public enum OpCode
         {
             OP_CONSTANT,
+            OP_NIL,
+            OP_TRUE,
+            OP_FALSE,
+            OP_EQUAL,
+            OP_GREATER,
+            OP_LESS,
             OP_ADD,
             OP_SUBTRACT,
             OP_MULTIPLY,
             OP_DIVIDE,
+            OP_NOT,
             OP_NEGATE,
             OP_RETURN
         }

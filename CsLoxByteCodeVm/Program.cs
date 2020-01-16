@@ -3,42 +3,81 @@ using CsLoxByteCodeVm.Debugging;
 using CsLoxByteCodeVm.Values;
 using CsLoxByteCodeVm.Code;
 using CsLoxByteCodeVm.Vm;
+using System.IO;
+using CsLoxByteCodeVm.Compiler;
 
 namespace CsLoxByteCodeVm
 {
     class Program
     {
+        private static LoxVm vm = new LoxVm() { DebugTraceExecution = true };
+
         static int Main(string[] args)
         {
-            Chunk chunk = new Chunk();
+            CodeChunk chunk = new CodeChunk();
 
-            // Add a constant
-            int constant = chunk.AddConstant(new VmValue(1.2));
-            chunk.WriteChunk(Chunk.OpCode.OP_CONSTANT, 123);
-            chunk.WriteChunk(constant, 123);
-
-            constant = chunk.AddConstant(new VmValue(3.4));
-            chunk.WriteChunk(Chunk.OpCode.OP_CONSTANT, 123);
-            chunk.WriteChunk(constant, 123);
-
-            chunk.WriteChunk(Chunk.OpCode.OP_ADD, 123);
-
-            constant = chunk.AddConstant(new VmValue(5.6));
-            chunk.WriteChunk(Chunk.OpCode.OP_CONSTANT, 123);
-            chunk.WriteChunk(constant, 123);
-
-            chunk.WriteChunk(Chunk.OpCode.OP_DIVIDE, 123);
-            chunk.WriteChunk(Chunk.OpCode.OP_NEGATE, 123);
-
-            // Add a OP_RETURN
-            chunk.WriteChunk(Chunk.OpCode.OP_RETURN, 123);
-
-            Debug.DisassembleChunk(chunk, "test chunk");
-
-            LoxVm vm = new LoxVm() { DebugTraceExecution = true };
-            vm.Interpret(chunk);
+            Repl();
 
             return 0;
+        }
+
+        /// <summary>
+        /// REPL routine.  Reads from console
+        /// </summary>
+        private static void Repl()
+        {
+            string line;
+            while (true)
+            {
+                Console.Write("> ");
+                line = Console.ReadLine();
+
+                // Quit if empty string
+                if (line.Length == 0)
+                {
+                    Console.WriteLine();
+                    break;
+                }
+
+
+                vm.Interpret(line);
+
+            }
+
+        }
+
+        /// <summary>
+        /// Read file and run the code
+        /// </summary>
+        /// <param name="path">The path</param>
+        private static void RunFile(string path)
+        {
+            string source = ReadFile(path);
+            LoxVm.InterpretResult result = vm.Interpret(source);
+
+            if (result == LoxVm.InterpretResult.CompileError) Environment.Exit(65);
+            if (result == LoxVm.InterpretResult.RuntimeError) Environment.Exit(70);
+
+        }
+
+        /// <summary>
+        /// Read a file into a string
+        /// </summary>
+        /// <param name="path">The file path</param>
+        /// <returns>The file contents</returns>
+        private static string ReadFile(string path)
+        {
+            try
+            {
+                return File.ReadAllText(path);
+            }
+            catch (IOException)
+            {
+                Console.Error.WriteLine($"Could not read file {path}");
+                Environment.Exit(74);
+            }
+
+            return null;
         }
     }
 }
