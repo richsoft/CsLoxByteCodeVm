@@ -11,6 +11,9 @@ namespace CsLoxByteCodeVm.Compiler
         private int _line;
         private string _source;
 
+        public char CurrentChar => _source[_current];
+        public string CurrentString => _source.Substring(_start, _current - _start);
+
         public Scanner(string source)
         {
             _source = source;
@@ -219,6 +222,7 @@ namespace CsLoxByteCodeVm.Compiler
         /// <returns>The token type</returns>
         private TokenType IdentifierType()
         {
+
             switch (_source[_start])
             {
                 case 'a': return CheckKeyword(1, 2, "nd", TokenType.TOKEN_AND);
@@ -270,7 +274,7 @@ namespace CsLoxByteCodeVm.Compiler
         private TokenType CheckKeyword(int start, int length, string rest, TokenType type)
         {
             if (_current - _start == start + length &&
-                    string.Equals(_source.Substring(start, length), rest))
+                    string.Equals(_source.Substring(_start + start, length), rest))
             {
 
                 return type;
@@ -318,12 +322,14 @@ namespace CsLoxByteCodeVm.Compiler
         /// <returns>The new token</returns>
         private Token MakeToken(TokenType type)
         {
-            return new Token()
+            Token tkn = new Token()
             {
                 Type = type,
                 Text = _source.Substring(_start, (_current - _start)),
                 Line = _line
             };
+
+            return tkn;
         }
 
         /// <summary>

@@ -40,9 +40,9 @@ namespace CsLoxByteCodeVm.Compiler
                 new ParseRule(null, Binary, Precedence.PREC_COMPARISON ),       // TOKEN_GREATER         
                 new ParseRule(null, Binary, Precedence.PREC_COMPARISON ),       // TOKEN_GREATER_EQUAL   
                 new ParseRule(null, Binary, Precedence.PREC_COMPARISON ),       // TOKEN_LESS            
-                new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_LESS_EQUAL      
+                new ParseRule(null, Binary, Precedence.PREC_COMPARISON ),       // TOKEN_LESS_EQUAL      
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_IDENTIFIER      
-                new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_STRING          
+                new ParseRule(String, null, Precedence.PREC_NONE ),       // TOKEN_STRING          
                 new ParseRule(Number, null, Precedence.PREC_NONE ),       // TOKEN_NUMBER          
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_AND             
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_CLASS           
@@ -192,7 +192,17 @@ namespace CsLoxByteCodeVm.Compiler
         private void Number()
         {
             double value = double.Parse(_parser.Previous.Text);
-            EmitConstant(new VmValue(value));
+            EmitConstant(VmValue.NumberValue(value));
+        }
+
+        /// <summary>
+        /// Parse a string
+        /// </summary>
+        private void String()
+        {
+            // Remove the quotes
+            string s = _parser.Previous.Text.Substring(1, _parser.Previous.Text.Length - 2);
+            EmitConstant(VmValue.StringObject(s));
         }
 
         /// <summary>

@@ -13,12 +13,17 @@ namespace CsLoxByteCodeVm.Vm
         private CodeChunk _chunk;
         private int _ip;
         private readonly VmStack _stack;
+        Dictionary<string, string> _strings;
+
+        private VmObject _objects;
 
         public bool DebugTraceExecution { get; set; }
 
         public LoxVm()
         {
             _stack = new VmStack();
+            _objects = null;
+            _strings = new Dictionary<string, string>();
         }
 
         /// <summary>
@@ -33,7 +38,8 @@ namespace CsLoxByteCodeVm.Vm
             CodeChunk chunk = new CodeChunk();
 
             // Try and complie the source code
-            if (!compiler.Compile(source, ref chunk)) {
+            if (!compiler.Compile(source, ref chunk))
+            {
                 return InterpretResult.CompileError;
             }
 
@@ -59,10 +65,10 @@ namespace CsLoxByteCodeVm.Vm
                     // Print stack
                     Console.Write("          ");
                     VmValue[] stack_array = _stack.ToArray();
-                    for(int slot = 0; slot < stack_array.Length; slot++)
+                    for (int slot = 0; slot < stack_array.Length; slot++)
                     {
                         Console.Write("[ ");
-                        Debug.PrintValue(stack_array[slot]);
+                        stack_array[slot].PrintValue();
                         Console.Write(" ]");
                     }
                     Console.WriteLine("");
@@ -82,25 +88,47 @@ namespace CsLoxByteCodeVm.Vm
                         _stack.Push(constant);
                         break;
 
-                    case (byte)CodeChunk.OpCode.OP_NIL: 
-                        _stack.Push(VmValue.NilValue()); 
+                    case (byte)CodeChunk.OpCode.OP_NIL:
+                        _stack.Push(VmValue.NilValue());
                         break;
-                    case (byte)CodeChunk.OpCode.OP_TRUE: 
+                    case (byte)CodeChunk.OpCode.OP_TRUE:
                         _stack.Push(VmValue.BooleanValue(true));
                         break;
-                    case (byte)CodeChunk.OpCode.OP_FALSE: 
-                        _stack.Push(VmValue.BooleanValue(false)); 
+                    case (byte)CodeChunk.OpCode.OP_FALSE:
+                        _stack.Push(VmValue.BooleanValue(false));
                         break;
 
                     case (byte)CodeChunk.OpCode.OP_EQUAL:
                         VmValue b = _stack.Pop();
                         VmValue a = _stack.Pop();
-                        _stack.Push(VmValue.BooleanValue(ValuesEqual(a, b)));
+                        _stack.Push(VmValue.BooleanValue(a.ValueEquals(b)));
+                        break;
+
+                    case (byte)CodeChunk.OpCode.OP_GREATER:
+                        r = BinaryOp(CodeChunk.OpCode.OP_GREATER);
+                        if (!r) return InterpretResult.RuntimeError;
+                        break;
+                    case (byte)CodeChunk.OpCode.OP_LESS:
+                        r = BinaryOp(CodeChunk.OpCode.OP_LESS);
+                        if (!r) return InterpretResult.RuntimeError;
                         break;
 
                     case (byte)CodeChunk.OpCode.OP_ADD:
-                        r = BinaryOp(CodeChunk.OpCode.OP_ADD);
-                        if (!r) return InterpretResult.RuntimeError;
+                        if (_stack.Peek(0).IsString() && _stack.Peek(1).IsString())
+                        {
+                            Concatenate();
+                        }
+                        else if (_stack.Peek(0).IsNumber() && _stack.Peek(1).IsNumber())
+                        {
+                            double b_num = _stack.Pop().AsNumber();
+                            double a_num = _stack.Pop().AsNumber();
+                            _stack.Push(VmValue.NumberValue(a_num + b_num));
+                        }
+                        else
+                        {
+                            RuntimeError("Operands must be two numbers or two strings.");
+                            return InterpretResult.RuntimeError;
+                        }
                         break;
                     case (byte)CodeChunk.OpCode.OP_SUBTRACT:
                         r = BinaryOp(CodeChunk.OpCode.OP_SUBTRACT);
@@ -115,7 +143,7 @@ namespace CsLoxByteCodeVm.Vm
                         if (!r) return InterpretResult.RuntimeError;
                         break;
                     case (byte)CodeChunk.OpCode.OP_NOT:
-                        _stack.Push(VmValue.BooleanValue(IsFalsy(_stack.Pop())));
+                        _stack.Push(VmValue.BooleanValue(_stack.Pop().IsFalsy()));
                         break;
                     case (byte)CodeChunk.OpCode.OP_NEGATE:
                         if (!_stack.Peek(0).IsNumber())
@@ -127,12 +155,12 @@ namespace CsLoxByteCodeVm.Vm
                         break;
 
                     case (byte)CodeChunk.OpCode.OP_RETURN:
-                        Debug.PrintValue(_stack.Pop());
+                        _stack.Pop().PrintValue();
                         Console.WriteLine();
                         return InterpretResult.OK;
 
                 }
-                
+
             }
         }
 
@@ -199,33 +227,16 @@ namespace CsLoxByteCodeVm.Vm
         }
 
         /// <summary>
-        /// Check if value is falsy (NIL or FALSE)
+        /// Concatenate strings
         /// </summary>
-        /// <param name="value">The value to test</param>
-        /// <returns>True if falsy</returns>
-        private bool IsFalsy(VmValue value)
+        public void Concatenate()
         {
-            return value.IsNil() || (value.IsBoolean() && !value.AsBoolean());
-        }
+            string b = _stack.Pop().AsObject().AsString();
+            string a = _stack.Pop().AsObject().AsString();
 
-        /// <summary>
-        /// tets equality of values
-        /// </summary>
-        /// <param name="a">Value a</param>
-        /// <param name="b">Value b</param>
-        /// <returns>True if a == b</returns>
-        private bool ValuesEqual(VmValue a, VmValue b)
-        {
-            if (a.Type != b.Type) return false;
+            string s = a + b;
 
-            switch (a.Type)
-            {
-                case Values.ValueType.VAL_BOOL: return a.AsBoolean() == b.AsBoolean();
-                case Values.ValueType.VAL_NIL: return true;
-                case Values.ValueType.VAL_NUMBER: return a.AsNumber() == b.AsNumber();
-            }
-
-            return false;
+            _stack.Push(VmValue.StringObject(s));
 
         }
 

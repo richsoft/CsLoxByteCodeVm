@@ -9,14 +9,14 @@ namespace CsLoxByteCodeVm.Code
     {
         public List<byte> Code { get; }
         public List<int> Lines { get; }
-        public ValueTable Constants { get; }
+        public ConstantTable Constants { get; }
 
 
         public CodeChunk()
         {
             Code = new List<byte>();
             Lines = new List<int>();
-            Constants = new ValueTable();
+            Constants = new ConstantTable();
         }
 
         /// <summary>
@@ -47,6 +47,17 @@ namespace CsLoxByteCodeVm.Code
         {
             Constants.Values.Add(value);
             return Constants.Values.Count - 1;
+        }
+
+        public class ConstantTable
+        {
+            public List<VmValue> Values { get; set; }
+
+            public ConstantTable()
+            {
+                Values = new List<VmValue>();
+            }
+
         }
 
         public enum OpCode

@@ -105,33 +105,10 @@ namespace CsLoxByteCodeVm.Debugging
         {
             byte constant = chunk.Code[offset + 1];
             Console.Write($"{name,-16} {constant,4} '");
-            PrintValue(chunk.Constants.Values[constant]);
+            chunk.Constants.Values[constant].PrintValue();
             Console.WriteLine("'");
 
             return offset + 2;
-        }
-
-        /// <summary>
-        /// Print a value
-        /// </summary>
-        /// <param name="value">The value</param>
-        public static void PrintValue(VmValue value)
-        {
-            switch (value.Type)
-            {
-                case Values.ValueType.VAL_BOOL:
-                    Console.Write(value.AsBoolean() ? "true": "false");
-                    break;
-                case Values.ValueType.VAL_NIL:
-                    Console.Write("nil");
-                    break;
-                case Values.ValueType.VAL_NUMBER:
-                    Console.Write($"{value.AsNumber()}");
-                    break;
-
-            }
-
-
         }
     }
 }
