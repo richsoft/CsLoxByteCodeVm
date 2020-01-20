@@ -65,6 +65,8 @@ namespace CsLoxByteCodeVm.Compiler
                     return MakeToken(Match('=') ? TokenType.TOKEN_GREATER_EQUAL : TokenType.TOKEN_GREATER);
                 case '"':
                     return String();
+                default:
+                    break;
             }
 
             // Pass the errors to the compiler as ERROR tokens
@@ -353,7 +355,6 @@ namespace CsLoxByteCodeVm.Compiler
             // In clox, the text is stored as a pointer into the source and length
             public string Text { get; set; }
             public int Line { get; set; }
-
 
         }
 

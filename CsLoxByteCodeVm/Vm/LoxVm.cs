@@ -78,41 +78,75 @@ namespace CsLoxByteCodeVm.Vm
                 byte instruction = ReadByte();
                 bool r;
 
-                switch (instruction)
+                switch ((CodeChunk.OpCode)instruction)
                 {
-                    case (byte)CodeChunk.OpCode.OP_CONSTANT:
+                    case CodeChunk.OpCode.OP_CONSTANT:
                         LoxValue constant = ReadConstant();
                         _stack.Push(constant);
                         break;
 
-                    case (byte)CodeChunk.OpCode.OP_NIL:
+                    case CodeChunk.OpCode.OP_NIL:
                         _stack.Push(LoxValue.NilValue());
                         break;
-                    case (byte)CodeChunk.OpCode.OP_TRUE:
+                    case CodeChunk.OpCode.OP_TRUE:
                         _stack.Push(LoxValue.BooleanValue(true));
                         break;
-                    case (byte)CodeChunk.OpCode.OP_FALSE:
+                    case CodeChunk.OpCode.OP_FALSE:
                         _stack.Push(LoxValue.BooleanValue(false));
                         break;
-                    case (byte)CodeChunk.OpCode.OP_POP:
+                    case CodeChunk.OpCode.OP_POP:
                         _stack.Pop(); 
                         break;
-                    case (byte)CodeChunk.OpCode.OP_EQUAL:
+
+                    case CodeChunk.OpCode.OP_GET_LOCAL:
+                        byte local_get_slot = ReadByte();
+                        _stack.Push(_stack[local_get_slot]);
+                        break;
+                    case CodeChunk.OpCode.OP_SET_LOCAL:
+                        byte local_set_slot = ReadByte();
+                        _stack[local_set_slot] = _stack.Peek(0);
+                        break;
+                    case CodeChunk.OpCode.OP_GET_GLOBAL:
+                        LoxString global_get_name = ReadString();
+                        LoxValue value;
+                        if (!_mem_manager.Globals.Get(global_get_name, out value))
+                        {
+                            RuntimeError($"Undefined variable '{global_get_name.Value}'.");
+                            return InterpretResult.RuntimeError;
+                        }
+                        _stack.Push(value);
+                        break;
+                    case CodeChunk.OpCode.OP_DEFINE_GLOBAL:
+                        LoxString global_def_name = ReadString();
+                        _mem_manager.Globals.Set(global_def_name, _stack.Peek(0));
+                        _stack.Pop();
+                        break;
+                    case CodeChunk.OpCode.OP_SET_GLOBAL:
+                        LoxString global_set_name = ReadString();
+                        if (_mem_manager.Globals.Set(global_set_name, _stack.Peek(0)))
+                        {
+                            _mem_manager.Globals.Delete(global_set_name);
+                            RuntimeError($"Undefined variable '{global_set_name.Value}'.");
+                            return InterpretResult.RuntimeError;
+                        }
+                        break;
+
+                    case CodeChunk.OpCode.OP_EQUAL:
                         LoxValue b = _stack.Pop();
                         LoxValue a = _stack.Pop();
                         _stack.Push(LoxValue.BooleanValue(a.ValueEquals(b)));
                         break;
 
-                    case (byte)CodeChunk.OpCode.OP_GREATER:
+                    case CodeChunk.OpCode.OP_GREATER:
                         r = BinaryOp(CodeChunk.OpCode.OP_GREATER);
                         if (!r) return InterpretResult.RuntimeError;
                         break;
-                    case (byte)CodeChunk.OpCode.OP_LESS:
+                    case CodeChunk.OpCode.OP_LESS:
                         r = BinaryOp(CodeChunk.OpCode.OP_LESS);
                         if (!r) return InterpretResult.RuntimeError;
                         break;
 
-                    case (byte)CodeChunk.OpCode.OP_ADD:
+                    case CodeChunk.OpCode.OP_ADD:
                         if (_stack.Peek(0).IsString() && _stack.Peek(1).IsString())
                         {
                             Concatenate();
@@ -129,22 +163,22 @@ namespace CsLoxByteCodeVm.Vm
                             return InterpretResult.RuntimeError;
                         }
                         break;
-                    case (byte)CodeChunk.OpCode.OP_SUBTRACT:
+                    case CodeChunk.OpCode.OP_SUBTRACT:
                         r = BinaryOp(CodeChunk.OpCode.OP_SUBTRACT);
                         if (!r) return InterpretResult.RuntimeError;
                         break;
-                    case (byte)CodeChunk.OpCode.OP_MULTIPLY:
+                    case CodeChunk.OpCode.OP_MULTIPLY:
                         r = BinaryOp(CodeChunk.OpCode.OP_MULTIPLY);
                         if (!r) return InterpretResult.RuntimeError;
                         break;
-                    case (byte)CodeChunk.OpCode.OP_DIVIDE:
+                    case CodeChunk.OpCode.OP_DIVIDE:
                         r = BinaryOp(CodeChunk.OpCode.OP_DIVIDE);
                         if (!r) return InterpretResult.RuntimeError;
                         break;
-                    case (byte)CodeChunk.OpCode.OP_NOT:
+                    case CodeChunk.OpCode.OP_NOT:
                         _stack.Push(LoxValue.BooleanValue(_stack.Pop().IsFalsy()));
                         break;
-                    case (byte)CodeChunk.OpCode.OP_NEGATE:
+                    case CodeChunk.OpCode.OP_NEGATE:
                         if (!_stack.Peek(0).IsNumber())
                         {
                             RuntimeError("Operand must be a number.");
@@ -153,10 +187,13 @@ namespace CsLoxByteCodeVm.Vm
                         _stack.Push(LoxValue.NumberValue(-_stack.Pop().AsNumber()));
                         break;
 
-                    case (byte)CodeChunk.OpCode.OP_PRINT:
+                    case CodeChunk.OpCode.OP_PRINT:
                         _stack.Pop().PrintValue();
                         Console.WriteLine();
                         break;
+
+                    case CodeChunk.OpCode.OP_RETURN:
+                        return InterpretResult.OK;
 
                 }
 
@@ -179,6 +216,15 @@ namespace CsLoxByteCodeVm.Vm
         private LoxValue ReadConstant()
         {
             return _chunk.Constants.Values[ReadByte()];
+        }
+
+        /// <summary>
+        /// Read a constant string using the current byte as the index
+        /// </summary>
+        /// <returns></returns>
+        private LoxString ReadString()
+        {
+            return ((LoxString)ReadConstant().AsObject());
         }
 
         /// <summary>

@@ -7,13 +7,16 @@ namespace CsLoxByteCodeVm.Vm
 {
     class VmMemoryManager : IDisposable
     {
-        LoxObject _objects_head;
-        VmHashTable _strings;
+        private LoxObject _objects_head;
+        private VmHashTable _strings;
+
+        public VmHashTable Globals;
 
         public VmMemoryManager()
         {
             _objects_head = null;
             _strings = new VmHashTable();
+            Globals = new VmHashTable();
         }
 
         /// <summary>
@@ -24,7 +27,7 @@ namespace CsLoxByteCodeVm.Vm
         public LoxString AllocateString(string s)
         {
             // Check if we have already interned this string
-            UInt32 hash = LoxString.HashString(s);
+            uint hash = LoxString.HashString(s);
             LoxString interned = _strings.FindStringKey(s, hash);
             if (interned != null) return interned;
 
@@ -75,6 +78,7 @@ namespace CsLoxByteCodeVm.Vm
         {
             FreeObjects();
             _strings.FreeTable();
+            Globals.FreeTable();
         }
     }
 }

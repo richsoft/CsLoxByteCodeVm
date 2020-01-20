@@ -123,11 +123,11 @@ namespace CsLoxByteCodeVm.Vm
         /// <param name="s">The string</param>
         /// <param name="hash">The string hash</param>
         /// <returns>The key if found</returns>
-        public LoxString FindStringKey(string s, UInt32 hash)
+        public LoxString FindStringKey(string s, uint hash)
         {
             if (Count == 0) return null;
 
-            UInt32 index = (UInt32)(hash % Capacity);
+            uint index = (uint)(hash % Capacity);
             while (true)
             {
                 Entry entry = _entries[index];
@@ -142,7 +142,7 @@ namespace CsLoxByteCodeVm.Vm
                     return entry.Key;
                 }
 
-                index = (UInt32)((index + 1) % Capacity);
+                index = (uint)((index + 1) % Capacity);
             }
 
         }
@@ -178,7 +178,7 @@ namespace CsLoxByteCodeVm.Vm
         /// <returns></returns>
         private Entry FindEntry(ref Entry[] entries, LoxString key)
         {
-            UInt32 index = (UInt32)(key.Hash % entries.Length);
+            uint index = (uint)(key.Hash % entries.Length);
 
             Entry tombstone = null;
 
@@ -208,7 +208,7 @@ namespace CsLoxByteCodeVm.Vm
                     return entry;
                 }
 
-                index = (UInt32)((index + 1) % entries.Length);
+                index = (uint)((index + 1) % entries.Length);
             }
         }
 

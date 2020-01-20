@@ -49,39 +49,49 @@ namespace CsLoxByteCodeVm.Debugging
 
             // Instruction
             byte instruction = chunk.Code[offset];
-            switch (instruction)
+            switch ((CodeChunk.OpCode)instruction)
             {
-                case (byte)CodeChunk.OpCode.OP_CONSTANT:
+                case CodeChunk.OpCode.OP_CONSTANT:
                     return ConstantInstruction("OP_CONSTANT", chunk, offset);
-                case (byte)CodeChunk.OpCode.OP_NIL:
+                case CodeChunk.OpCode.OP_NIL:
                     return SimpleInstruction("OP_NILL", offset);
-                case (byte)CodeChunk.OpCode.OP_TRUE:
+                case CodeChunk.OpCode.OP_TRUE:
                     return SimpleInstruction("OP_TRUE", offset);
-                case (byte)CodeChunk.OpCode.OP_FALSE:
+                case CodeChunk.OpCode.OP_FALSE:
                     return SimpleInstruction("OP_FALSE", offset);
-                case (byte)CodeChunk.OpCode.OP_POP:
+                case CodeChunk.OpCode.OP_POP:
                     return SimpleInstruction("OP_POP", offset);
-                case (byte)CodeChunk.OpCode.OP_EQUAL:
+                case CodeChunk.OpCode.OP_GET_LOCAL:
+                    return ByteInstruction("OP_GET_LOCAL", chunk, offset);
+                case CodeChunk.OpCode.OP_SET_LOCAL:
+                    return ByteInstruction("OP_SET_LOCAL", chunk, offset);
+                case CodeChunk.OpCode.OP_GET_GLOBAL:
+                    return ConstantInstruction("OP_GET_GLOBAL", chunk, offset);
+                case CodeChunk.OpCode.OP_DEFINE_GLOBAL:
+                    return ConstantInstruction("OP_DEFINE_GLOBAL", chunk, offset);
+                case CodeChunk.OpCode.OP_SET_GLOBAL:
+                    return ConstantInstruction("OP_SET_GLOBAL", chunk, offset);
+                case CodeChunk.OpCode.OP_EQUAL:
                     return SimpleInstruction("OP_EQUAL", offset);
-                case (byte)CodeChunk.OpCode.OP_GREATER:
+                case CodeChunk.OpCode.OP_GREATER:
                     return SimpleInstruction("OP_GREATER", offset);
-                case (byte)CodeChunk.OpCode.OP_LESS:
+                case CodeChunk.OpCode.OP_LESS:
                     return SimpleInstruction("OP_LESS", offset);
-                case (byte)CodeChunk.OpCode.OP_ADD:
+                case CodeChunk.OpCode.OP_ADD:
                     return SimpleInstruction("OP_ADD", offset);
-                case (byte)CodeChunk.OpCode.OP_SUBTRACT:
+                case CodeChunk.OpCode.OP_SUBTRACT:
                     return SimpleInstruction("OP_SUBTRACT", offset);
-                case (byte)CodeChunk.OpCode.OP_MULTIPLY:
+                case CodeChunk.OpCode.OP_MULTIPLY:
                     return SimpleInstruction("OP_MULTIPLY", offset);
-                case (byte)CodeChunk.OpCode.OP_DIVIDE:
+                case CodeChunk.OpCode.OP_DIVIDE:
                     return SimpleInstruction("OP_DIVIDE", offset);
-                case (byte)CodeChunk.OpCode.OP_NOT:
+                case CodeChunk.OpCode.OP_NOT:
                     return SimpleInstruction("OP_NOT", offset);
-                case (byte)CodeChunk.OpCode.OP_NEGATE:
+                case CodeChunk.OpCode.OP_NEGATE:
                     return SimpleInstruction("OP_NEGATE", offset);
-                case (byte)CodeChunk.OpCode.OP_PRINT:
+                case CodeChunk.OpCode.OP_PRINT:
                     return SimpleInstruction("OP_PRINT", offset);
-                case (byte)CodeChunk.OpCode.OP_RETURN:
+                case CodeChunk.OpCode.OP_RETURN:
                     return SimpleInstruction("OP_RETURN", offset);
                 default:
                     Console.WriteLine($"Unknown opcode {instruction}");
@@ -115,6 +125,13 @@ namespace CsLoxByteCodeVm.Debugging
             chunk.Constants.Values[constant].PrintValue();
             Console.WriteLine("'");
 
+            return offset + 2;
+        }
+
+        private static int ByteInstruction(string name, CodeChunk chunk, int offset)
+        {
+            byte slot = chunk.Code[offset + 1];
+            Console.WriteLine($"{name,-16} {slot,4}");
             return offset + 2;
         }
     }

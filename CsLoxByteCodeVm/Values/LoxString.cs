@@ -8,7 +8,7 @@ namespace CsLoxByteCodeVm.Values
     {
         public string Value { get; }
         public int Length => Value.Length;
-        public UInt32 Hash { get; }
+        public uint Hash { get; }
 
         public LoxString(string value) : base(ObjectType.OBJ_STRING)
         {
@@ -16,7 +16,7 @@ namespace CsLoxByteCodeVm.Values
             Hash = HashString(Value);
         }
 
-        public LoxString(string value, UInt32 hash) : base(ObjectType.OBJ_STRING)
+        public LoxString(string value, uint hash) : base(ObjectType.OBJ_STRING)
         {
             Value = value;
             Hash = hash;
@@ -27,9 +27,9 @@ namespace CsLoxByteCodeVm.Values
         /// </summary>
         /// <param name="s">The string to hash</param>
         /// <returns>The hash</returns>
-        public static UInt32 HashString(string s)
+        public static uint HashString(string s)
         {
-            UInt32 hash = 2166136261u;
+            uint hash = 2166136261u;
 
             for (int i = 0; i < s.Length; i++)
             {

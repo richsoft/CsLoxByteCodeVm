@@ -10,19 +10,22 @@ namespace CsLoxByteCodeVm.Compiler
 {
     class LoxCompiler
     {
-        private Parser _parser;
-        private Scanner _scanner;
-        private CodeChunk _compiling_chunk;
+        private readonly Parser _parser;
+        private readonly Compiler _current;
         private readonly ParseRule[] _parse_rules;
         private readonly VmMemoryManager _mem_manager;
 
-        public bool DebugPrintCode {get; set;}
+        private Scanner _scanner;
+        private CodeChunk _compiling_chunk;
+
+
+        public bool DebugPrintCode { get; set; }
 
         public LoxCompiler(VmMemoryManager mem_manager)
         {
             _mem_manager = mem_manager;
             _parser = new Parser();
-            
+            _current = new Compiler();
 
             // Parse rules
             _parse_rules = new[] {
@@ -45,7 +48,7 @@ namespace CsLoxByteCodeVm.Compiler
                 new ParseRule(null, Binary, Precedence.PREC_COMPARISON ),       // TOKEN_GREATER_EQUAL   
                 new ParseRule(null, Binary, Precedence.PREC_COMPARISON ),       // TOKEN_LESS            
                 new ParseRule(null, Binary, Precedence.PREC_COMPARISON ),       // TOKEN_LESS_EQUAL      
-                new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_IDENTIFIER      
+                new ParseRule(Variable, null, Precedence.PREC_NONE ),       // TOKEN_IDENTIFIER      
                 new ParseRule(String, null, Precedence.PREC_NONE ),       // TOKEN_STRING          
                 new ParseRule(Number, null, Precedence.PREC_NONE ),       // TOKEN_NUMBER          
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_AND             
@@ -81,7 +84,8 @@ namespace CsLoxByteCodeVm.Compiler
             _parser.PanicMode = false;
 
             Advance();
-            while (!Match(Scanner.TokenType.TOKEN_EOF)) {
+            while (!Match(Scanner.TokenType.TOKEN_EOF))
+            {
                 Declaration();
             }
 
@@ -156,13 +160,13 @@ namespace CsLoxByteCodeVm.Compiler
                     Debug.DisassembleChunk(CurrentChunk(), "code");
                 }
             }
-            //EmitReturn();
+            EmitReturn();
         }
 
         /// <summary>
         /// Parse a binary expression
         /// </summary>
-        private void Binary()
+        private void Binary(bool can_assign)
         {
             // Remeber the operator
             Scanner.TokenType operator_type = _parser.Previous.Type;
@@ -192,7 +196,7 @@ namespace CsLoxByteCodeVm.Compiler
         /// <summary>
         /// Parse a literal
         /// </summary>
-        private void Literal()
+        private void Literal(bool can_assign)
         {
             switch (_parser.Previous.Type)
             {
@@ -214,11 +218,83 @@ namespace CsLoxByteCodeVm.Compiler
         }
 
         /// <summary>
+        /// Begin a new scope
+        /// </summary>
+        public void BeginScope()
+        {
+            _current.ScopeDepth++;
+        }
+
+        /// <summary>
+        /// end the current scope
+        /// </summary>
+        public void EndScope()
+        {
+            _current.ScopeDepth--;
+
+            // Loop back through the scope array
+            while (_current.LocalCount > 0 &&
+                _current.Locals[_current.LocalCount - 1].Depth > _current.ScopeDepth)
+            {
+                EmitByte(CodeChunk.OpCode.OP_POP);
+                _current.LocalCount--;
+            }
+        }
+
+
+        /// <summary>
+        /// Compile a block
+        /// </summary>
+        private void Block()
+        {
+            // Parse declarations until the closing brace
+            while (!Check(Scanner.TokenType.TOKEN_RIGHT_BRACE) && !Check(Scanner.TokenType.TOKEN_EOF))
+            {
+                Declaration();
+            }
+
+            Consume(Scanner.TokenType.TOKEN_RIGHT_BRACE, "Expect '}' after block.");
+
+        }
+
+        /// <summary>
         /// Parse a declaration
         /// </summary>
         private void Declaration()
         {
-            Statement();
+            if (Match(Scanner.TokenType.TOKEN_VAR))
+            {
+                VarDeclaration();
+            }
+            else
+            {
+                Statement();
+            }
+
+            if (_parser.PanicMode) Synchronize();
+        }
+
+        /// <summary>
+        /// Compile a variable declaration
+        /// </summary>
+        private void VarDeclaration()
+        {
+            uint global = ParseVariable("Expect variable name");
+
+            // If there is an initialiser then compile it
+            if (Match(Scanner.TokenType.TOKEN_EQUAL))
+            {
+                Expression();
+            }
+            else
+            {
+                // If not initialiser, set to Nil
+                EmitByte(CodeChunk.OpCode.OP_NIL);
+            }
+            Consume(Scanner.TokenType.TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
+
+            DefineVariable(global);
+
         }
 
         /// <summary>
@@ -229,6 +305,12 @@ namespace CsLoxByteCodeVm.Compiler
             if (Match(Scanner.TokenType.TOKEN_PRINT))
             {
                 PrintStatement();
+            }
+            else if (Match(Scanner.TokenType.TOKEN_LEFT_BRACE))
+            {
+                BeginScope();
+                Block();
+                EndScope();
             }
             else
             {
@@ -257,9 +339,42 @@ namespace CsLoxByteCodeVm.Compiler
         }
 
         /// <summary>
+        /// Syncronise after an error
+        /// </summary>
+        private void Synchronize()
+        {
+            _parser.PanicMode = false;
+
+            while (_parser.Current.Type != Scanner.TokenType.TOKEN_EOF)
+            {
+                if (_parser.Previous.Type == Scanner.TokenType.TOKEN_SEMICOLON) return;
+
+                // Find a statement boundary
+                switch (_parser.Current.Type)
+                {
+                    case Scanner.TokenType.TOKEN_CLASS:
+                    case Scanner.TokenType.TOKEN_FUN:
+                    case Scanner.TokenType.TOKEN_VAR:
+                    case Scanner.TokenType.TOKEN_FOR:
+                    case Scanner.TokenType.TOKEN_IF:
+                    case Scanner.TokenType.TOKEN_WHILE:
+                    case Scanner.TokenType.TOKEN_PRINT:
+                    case Scanner.TokenType.TOKEN_RETURN:
+                        return;
+
+                    default:
+                        // Do nothing
+                        break;
+                }
+
+                Advance();
+            }
+        }
+
+        /// <summary>
         /// Compile a number
         /// </summary>
-        private void Number()
+        private void Number(bool can_assign)
         {
             double value = double.Parse(_parser.Previous.Text);
             EmitConstant(LoxValue.NumberValue(value));
@@ -268,11 +383,11 @@ namespace CsLoxByteCodeVm.Compiler
         /// <summary>
         /// Compile a string
         /// </summary>
-        private void String()
+        private void String(bool can_assign)
         {
             // Remove the quotes
-            string text = _parser.Previous.Text.Substring(1, _parser.Previous.Text.Length - 2);
-            
+            string text = _parser.Previous.Text[1..^1];
+
             // Create a string object, making sure it is stored by the memory manager
             LoxString s = _mem_manager.AllocateString(text);
 
@@ -280,9 +395,53 @@ namespace CsLoxByteCodeVm.Compiler
         }
 
         /// <summary>
+        /// Parse a variable
+        /// </summary>
+        private void Variable(bool can_assign)
+        {
+            NamedVariable(_parser.Previous, can_assign);
+        }
+
+        /// <summary>
+        /// Compile a named variable
+        /// </summary>
+        /// <param name="token">The identifer token</param>
+        /// <param name="can_assign">True if allowed to assign</param>
+        private void NamedVariable(Scanner.Token name, bool can_assign)
+        {
+            CodeChunk.OpCode get_op;
+            CodeChunk.OpCode set_op;
+
+            int arg = ResolveLocal(name);
+            if (arg != -1)
+            {
+                get_op = CodeChunk.OpCode.OP_GET_LOCAL;
+                set_op = CodeChunk.OpCode.OP_SET_LOCAL;
+            }
+            else
+            {
+                arg = (int)IdentifierConstant(name);
+                get_op = CodeChunk.OpCode.OP_GET_GLOBAL;
+                set_op = CodeChunk.OpCode.OP_SET_GLOBAL;
+            }
+
+            if (can_assign && Match(Scanner.TokenType.TOKEN_EQUAL))
+            {
+                // Assignment
+                Expression();
+                EmitBytes(set_op, (byte)arg);
+            }
+            else
+            {
+                // Access
+                EmitBytes(get_op, (byte)arg);
+            }
+        }
+
+        /// <summary>
         /// Parse grouping brackets
         /// </summary>
-        private void Grouping()
+        private void Grouping(bool can_assign)
         {
             // Compile the inner expression
             Expression();
@@ -294,7 +453,7 @@ namespace CsLoxByteCodeVm.Compiler
         /// <summary>
         /// Parse a unary expression
         /// </summary>
-        private void Unary()
+        private void Unary(bool can_assign)
         {
             Scanner.TokenType operator_type = _parser.Previous.Type;
 
@@ -321,23 +480,170 @@ namespace CsLoxByteCodeVm.Compiler
             Advance();
 
             // Prefix
-            Action prefix_rule = GetRule(_parser.Previous.Type).Prefix;
+            Action<bool> prefix_rule = GetRule(_parser.Previous.Type).Prefix;
             if (prefix_rule == null)
             {
                 Error("Expect expression.");
                 return;
             }
-            prefix_rule();
+            bool can_assign = precedence <= Precedence.PREC_ASSIGNMENT;
+            prefix_rule(can_assign);
 
             // Infix
             while (precedence < GetRule(_parser.Current.Type).Precedence)
             {
                 Advance();
-                Action infix_rule = GetRule(_parser.Previous.Type).Infix;
-                infix_rule();
+                Action<bool> infix_rule = GetRule(_parser.Previous.Type).Infix;
+                infix_rule(can_assign);
+            }
+
+            if (can_assign && Match(Scanner.TokenType.TOKEN_EQUAL))
+            {
+                Error("Invalid assignment target.");
             }
         }
 
+        /// <summary>
+        /// Parse a variable name, returning its constant index
+        /// </summary>
+        /// <param name="error_message"></param>
+        /// <returns>The constant index</returns>
+        private uint ParseVariable(string error_message)
+        {
+            Consume(Scanner.TokenType.TOKEN_IDENTIFIER, error_message);
+
+            DeclareVariable();
+
+            // We only need to look up global varibales by name
+            // If scope is deeper than 0, return.
+            if (_current.InLocalScope) return 0;
+
+            return IdentifierConstant(_parser.Previous);
+        }
+
+        /// <summary>
+        /// Mark the current variable initialised
+        /// </summary>
+        private void MarkInitialised()
+        {
+            _current.Locals[_current.LocalCount - 1].Depth = _current.ScopeDepth;
+        }
+
+        /// <summary>
+        /// Compile a global variable declaration
+        /// </summary>
+        /// <param name="global"></param>
+        private void DefineVariable(uint global)
+        {
+            if (_current.InLocalScope)
+            {
+                MarkInitialised();
+                return;
+            }
+
+            EmitBytes(CodeChunk.OpCode.OP_DEFINE_GLOBAL, (byte)global);
+        }
+
+        /// <summary>
+        /// Create a constant from a identifer
+        /// </summary>
+        /// <param name="token">The token</param>
+        /// <returns>The constant index</returns>
+        private uint IdentifierConstant(Scanner.Token token)
+        {
+            return MakeConstant(LoxValue.StringObject(_mem_manager.AllocateString(token.Text)));
+        }
+
+        /// <summary>
+        /// Check if identifer tokens are equal
+        /// </summary>
+        /// <param name="a">The first token</param>
+        /// <param name="b">The second token</param>
+        /// <returns>True ii tokens are both identifiers, and the name is the same</returns>
+        private bool IdentifiersEqual(Scanner.Token a, Scanner.Token b)
+        {
+            return string.Equals(a.Text, b.Text);
+        }
+
+        /// <summary>
+        /// Resolve a local variable
+        /// </summary>
+        /// <param name="name">The variable name</param>
+        /// <returns>The locals index</returns>
+        private int ResolveLocal(Scanner.Token name)
+        {
+            for (int i = _current.LocalCount - 1; i >= 0; i--)
+            {
+                Compiler.Local local = _current.Locals[i];
+                if (IdentifiersEqual(name, local.Name))
+                {
+                    if (!local.IsInitialised)
+                    {
+                        Error("Cannot read local variable in its own initialiser.");
+                    }
+                    return i;
+                }
+            }
+
+            // Not found
+            return -1;
+        }
+
+        /// <summary>
+        /// Add a local variable
+        /// </summary>
+        /// <param name="name"></param>
+        /// <returns>True if successful</returns>
+        public void AddLocal(Scanner.Token name)
+        {
+            if (_current.LocalCount == Compiler.MAX_LOCALS)
+            {
+                Error("Too many local variables in function.");
+                return;
+            }
+
+            Compiler.Local local = new Compiler.Local(name);
+
+            _current.Locals[_current.LocalCount++] = local;
+
+        }
+
+
+        /// <summary>
+        /// Declare a local variable
+        /// </summary>
+        private void DeclareVariable()
+        {
+            if (_current.InGlobalScope) return;
+
+            Scanner.Token name = _parser.Previous;
+
+            // Make sure we are not redeclaring again
+            // Search form the end of the array
+            for (int i = _current.LocalCount - 1; i >= 0; i--)
+            {
+                Compiler.Local local = _current.Locals[i];
+                // Stop if this is not in our current scope
+                if (local.Depth != -1 && local.Depth < _current.ScopeDepth)
+                {
+                    break;
+                }
+
+                if (IdentifiersEqual(name, local.Name))
+                {
+                    Error("Variable with this name already declared in this scope.");
+                }
+            }
+
+            AddLocal(name);
+
+        }
+
+        /// <summary>
+        /// Get the parsing rule for a token type
+        /// </summary>
+        /// <param name="type">The token type</param>
+        /// <returns>The rule</returns>
         private ParseRule GetRule(Scanner.TokenType type)
         {
             return _parse_rules[(int)type];
@@ -494,17 +800,49 @@ namespace CsLoxByteCodeVm.Compiler
 
         private class ParseRule
         {
-            public Action Prefix { get; set; }
-            public Action Infix { get; set; }
+            public Action<bool> Prefix { get; set; }
+            public Action<bool> Infix { get; set; }
             public Precedence Precedence { get; set; }
 
             public ParseRule() { }
 
-            public ParseRule(Action prefix, Action infix, Precedence precendence)
+            public ParseRule(Action<bool> prefix, Action<bool> infix, Precedence precendence)
             {
                 Prefix = prefix;
                 Infix = infix;
                 Precedence = precendence;
+            }
+        }
+
+        private class Compiler
+        {
+            public Local[] Locals { get; set; }
+            public int LocalCount { get; set; }
+            public int ScopeDepth { get; set; }
+
+            public bool InLocalScope => ScopeDepth > 0;
+            public bool InGlobalScope => ScopeDepth == 0;
+
+            public const int MAX_LOCALS = (byte.MaxValue + 1);
+
+            public Compiler()
+            {
+                Locals = new Local[MAX_LOCALS];
+                LocalCount = 0;
+                ScopeDepth = 0;
+            }
+
+            public class Local
+            {
+                public Scanner.Token Name { get; set; }
+                public int Depth { get; set; }
+
+                public bool IsInitialised => Depth > -1;
+
+                public Local(Scanner.Token name)
+                {
+                    Name = name;
+                }
             }
         }
 

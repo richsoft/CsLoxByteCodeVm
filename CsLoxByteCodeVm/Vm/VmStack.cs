@@ -11,6 +11,18 @@ namespace CsLoxByteCodeVm.Vm
         LoxValue[] _stack = new LoxValue[MAX_STACK];
         private int _top;
 
+        public LoxValue this[int index]
+        {
+            get
+            {
+                return _stack[index];
+            }
+            set
+            {
+                _stack[index] = value;
+            }
+        }
+
         /// <summary>
         /// Reset the stack
         /// </summary>
