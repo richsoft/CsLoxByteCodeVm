@@ -8,22 +8,19 @@ using System.Text;
 
 namespace CsLoxByteCodeVm.Vm
 {
-    class LoxVm
+    class LoxVm : IDisposable
     {
         private CodeChunk _chunk;
         private int _ip;
         private readonly VmStack _stack;
-        Dictionary<string, string> _strings;
-
-        private VmObject _objects;
+        private readonly VmMemoryManager _mem_manager;
 
         public bool DebugTraceExecution { get; set; }
 
         public LoxVm()
         {
             _stack = new VmStack();
-            _objects = null;
-            _strings = new Dictionary<string, string>();
+            _mem_manager = new VmMemoryManager();
         }
 
         /// <summary>
@@ -33,7 +30,7 @@ namespace CsLoxByteCodeVm.Vm
         /// <returns>The result</returns>
         public InterpretResult Interpret(string source)
         {
-            LoxCompiler compiler = new LoxCompiler();
+            LoxCompiler compiler = new LoxCompiler(_mem_manager);
 
             CodeChunk chunk = new CodeChunk();
 
@@ -64,7 +61,7 @@ namespace CsLoxByteCodeVm.Vm
                 {
                     // Print stack
                     Console.Write("          ");
-                    VmValue[] stack_array = _stack.ToArray();
+                    LoxValue[] stack_array = _stack.ToArray();
                     for (int slot = 0; slot < stack_array.Length; slot++)
                     {
                         Console.Write("[ ");
@@ -84,24 +81,26 @@ namespace CsLoxByteCodeVm.Vm
                 switch (instruction)
                 {
                     case (byte)CodeChunk.OpCode.OP_CONSTANT:
-                        VmValue constant = ReadConstant();
+                        LoxValue constant = ReadConstant();
                         _stack.Push(constant);
                         break;
 
                     case (byte)CodeChunk.OpCode.OP_NIL:
-                        _stack.Push(VmValue.NilValue());
+                        _stack.Push(LoxValue.NilValue());
                         break;
                     case (byte)CodeChunk.OpCode.OP_TRUE:
-                        _stack.Push(VmValue.BooleanValue(true));
+                        _stack.Push(LoxValue.BooleanValue(true));
                         break;
                     case (byte)CodeChunk.OpCode.OP_FALSE:
-                        _stack.Push(VmValue.BooleanValue(false));
+                        _stack.Push(LoxValue.BooleanValue(false));
                         break;
-
+                    case (byte)CodeChunk.OpCode.OP_POP:
+                        _stack.Pop(); 
+                        break;
                     case (byte)CodeChunk.OpCode.OP_EQUAL:
-                        VmValue b = _stack.Pop();
-                        VmValue a = _stack.Pop();
-                        _stack.Push(VmValue.BooleanValue(a.ValueEquals(b)));
+                        LoxValue b = _stack.Pop();
+                        LoxValue a = _stack.Pop();
+                        _stack.Push(LoxValue.BooleanValue(a.ValueEquals(b)));
                         break;
 
                     case (byte)CodeChunk.OpCode.OP_GREATER:
@@ -122,7 +121,7 @@ namespace CsLoxByteCodeVm.Vm
                         {
                             double b_num = _stack.Pop().AsNumber();
                             double a_num = _stack.Pop().AsNumber();
-                            _stack.Push(VmValue.NumberValue(a_num + b_num));
+                            _stack.Push(LoxValue.NumberValue(a_num + b_num));
                         }
                         else
                         {
@@ -143,7 +142,7 @@ namespace CsLoxByteCodeVm.Vm
                         if (!r) return InterpretResult.RuntimeError;
                         break;
                     case (byte)CodeChunk.OpCode.OP_NOT:
-                        _stack.Push(VmValue.BooleanValue(_stack.Pop().IsFalsy()));
+                        _stack.Push(LoxValue.BooleanValue(_stack.Pop().IsFalsy()));
                         break;
                     case (byte)CodeChunk.OpCode.OP_NEGATE:
                         if (!_stack.Peek(0).IsNumber())
@@ -151,13 +150,13 @@ namespace CsLoxByteCodeVm.Vm
                             RuntimeError("Operand must be a number.");
                             return InterpretResult.RuntimeError;
                         }
-                        _stack.Push(VmValue.NumberValue(-_stack.Pop().AsNumber()));
+                        _stack.Push(LoxValue.NumberValue(-_stack.Pop().AsNumber()));
                         break;
 
-                    case (byte)CodeChunk.OpCode.OP_RETURN:
+                    case (byte)CodeChunk.OpCode.OP_PRINT:
                         _stack.Pop().PrintValue();
                         Console.WriteLine();
-                        return InterpretResult.OK;
+                        break;
 
                 }
 
@@ -177,7 +176,7 @@ namespace CsLoxByteCodeVm.Vm
         /// Read a constant using the current byte as a index.  Increments the IP
         /// </summary>
         /// <returns>The constant</returns>
-        private VmValue ReadConstant()
+        private LoxValue ReadConstant()
         {
             return _chunk.Constants.Values[ReadByte()];
         }
@@ -202,22 +201,22 @@ namespace CsLoxByteCodeVm.Vm
                 switch (op)
                 {
                     case CodeChunk.OpCode.OP_ADD:
-                        _stack.Push(VmValue.NumberValue(a + b));
+                        _stack.Push(LoxValue.NumberValue(a + b));
                         break;
                     case CodeChunk.OpCode.OP_SUBTRACT:
-                        _stack.Push(VmValue.NumberValue(a - b));
+                        _stack.Push(LoxValue.NumberValue(a - b));
                         break;
                     case CodeChunk.OpCode.OP_MULTIPLY:
-                        _stack.Push(VmValue.NumberValue(a * b));
+                        _stack.Push(LoxValue.NumberValue(a * b));
                         break;
                     case CodeChunk.OpCode.OP_DIVIDE:
-                        _stack.Push(VmValue.NumberValue(a / b));
+                        _stack.Push(LoxValue.NumberValue(a / b));
                         break;
                     case CodeChunk.OpCode.OP_GREATER:
-                        _stack.Push(VmValue.BooleanValue(a > b));
+                        _stack.Push(LoxValue.BooleanValue(a > b));
                         break;
                     case CodeChunk.OpCode.OP_LESS:
-                        _stack.Push(VmValue.BooleanValue(a < b));
+                        _stack.Push(LoxValue.BooleanValue(a < b));
                         break;
                 }
 
@@ -231,12 +230,12 @@ namespace CsLoxByteCodeVm.Vm
         /// </summary>
         public void Concatenate()
         {
-            string b = _stack.Pop().AsObject().AsString();
-            string a = _stack.Pop().AsObject().AsString();
+            string b = ((LoxString)_stack.Pop().AsObject()).AsString();
+            string a = ((LoxString)_stack.Pop().AsObject()).AsString();
 
             string s = a + b;
 
-            _stack.Push(VmValue.StringObject(s));
+            _stack.Push(LoxValue.StringObject(_mem_manager.AllocateString(s)));
 
         }
 
@@ -254,6 +253,12 @@ namespace CsLoxByteCodeVm.Vm
 
             _stack.Reset();
         }
+
+        public void Dispose()
+        {
+            
+        }
+
         public enum InterpretResult
         {
             OK,

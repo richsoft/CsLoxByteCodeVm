@@ -10,12 +10,15 @@ namespace CsLoxByteCodeVm
 {
     class Program
     {
-        private static readonly LoxVm vm = new LoxVm() { DebugTraceExecution = true };
+        private static LoxVm vm;
 
         static int Main(string[] args)
         {
-    
-            Repl();
+
+            using (vm = new LoxVm() { DebugTraceExecution = true })
+            {
+                Repl();
+            }
 
             return 0;
         }

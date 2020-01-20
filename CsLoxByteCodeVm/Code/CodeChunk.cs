@@ -43,7 +43,7 @@ namespace CsLoxByteCodeVm.Code
         /// </summary>
         /// <param name="value"></param>
         /// <returns>The index of the constant</returns>
-        public int AddConstant(VmValue value)
+        public int AddConstant(LoxValue value)
         {
             Constants.Values.Add(value);
             return Constants.Values.Count - 1;
@@ -51,11 +51,11 @@ namespace CsLoxByteCodeVm.Code
 
         public class ConstantTable
         {
-            public List<VmValue> Values { get; set; }
+            public List<LoxValue> Values { get; set; }
 
             public ConstantTable()
             {
-                Values = new List<VmValue>();
+                Values = new List<LoxValue>();
             }
 
         }
@@ -66,6 +66,7 @@ namespace CsLoxByteCodeVm.Code
             OP_NIL,
             OP_TRUE,
             OP_FALSE,
+            OP_POP,
             OP_EQUAL,
             OP_GREATER,
             OP_LESS,
@@ -75,6 +76,7 @@ namespace CsLoxByteCodeVm.Code
             OP_DIVIDE,
             OP_NOT,
             OP_NEGATE,
+            OP_PRINT,
             OP_RETURN
         }
 

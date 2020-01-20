@@ -5,23 +5,30 @@ using System.Text;
 
 namespace CsLoxByteCodeVm.Values
 {
-    class VmValue
+    class LoxValue
     {
         public ValueType Type { get; set; }
-        public Value _value;
+        private object _value;
 
-        private VmValue() { }
+        private LoxValue() { }
 
-        public VmValue(double value)
+        public LoxValue(double value)
         {
             Type = ValueType.VAL_NUMBER;
-            _value.Number = value;
+            _value = value;
         }
 
-        public VmValue(bool value)
+        public LoxValue(bool value)
         {
             Type = ValueType.VAL_BOOL;
-            _value.Boolean = value;
+            _value = value;
+        }
+
+        private LoxValue(ValueType type, object value)
+        {
+            Type = type;
+            _value = value;
+
         }
 
         /// <summary>
@@ -30,7 +37,7 @@ namespace CsLoxByteCodeVm.Values
         /// <returns>The boolean value</returns>
         public bool AsBoolean()
         {
-            return _value.Boolean;
+            return (bool)_value;
         }
 
         /// <summary>
@@ -39,16 +46,16 @@ namespace CsLoxByteCodeVm.Values
         /// <returns>The number value</returns>
         public double AsNumber()
         {
-            return _value.Number;
+            return (double)_value;
         }
 
         /// <summary>
         /// Get the value as an object
         /// </summary>
         /// <returns>The object value</returns>
-        public VmObject AsObject()
+        public LoxObject AsObject()
         {
-            return _value.Object;
+            return (LoxObject)_value;
         }
 
         /// <summary>
@@ -101,7 +108,7 @@ namespace CsLoxByteCodeVm.Values
         /// </summary>
         /// <param name="other">The other value</param>
         /// <returns>True if equal</returns>
-        public bool ValueEquals(VmValue other)
+        public bool ValueEquals(LoxValue other)
         {
             if (Type != other.Type) return false;
 
@@ -110,10 +117,7 @@ namespace CsLoxByteCodeVm.Values
                 case ValueType.VAL_BOOL: return AsBoolean() == other.AsBoolean();
                 case ValueType.VAL_NIL: return true;
                 case ValueType.VAL_NUMBER: return AsNumber() == other.AsNumber();
-                case ValueType.VAL_OBJ:
-                    VmObject a = AsObject();
-                    VmObject b = other.AsObject();
-                    return string.Equals(a.AsString(), b.AsString());
+                case ValueType.VAL_OBJ: return AsObject() == other.AsObject();
 
             }
 
@@ -160,9 +164,9 @@ namespace CsLoxByteCodeVm.Values
         /// </summary>
         /// <param name="value">The vlaue</param>
         /// <returns>The new value</returns>
-        public static VmValue BooleanValue(bool value)
+        public static LoxValue BooleanValue(bool value)
         {
-            return new VmValue(value);
+            return new LoxValue(value);
         }
 
         /// <summary>
@@ -170,9 +174,9 @@ namespace CsLoxByteCodeVm.Values
         /// </summary>
         /// <param name="value">The vlaue</param>
         /// <returns>The new value</returns>
-        public static VmValue NumberValue(double value)
+        public static LoxValue NumberValue(double value)
         {
-            return new VmValue(value);
+            return new LoxValue(value);
         }
 
         /// <summary>
@@ -180,34 +184,19 @@ namespace CsLoxByteCodeVm.Values
         /// </summary>
         /// <param name="value">The vlaue</param>
         /// <returns>The new value</returns>
-        public static VmValue NilValue()
+        public static LoxValue NilValue()
         {
-            VmValue val = new VmValue()
-            {
-                Type = ValueType.VAL_NIL
-            };
-
-            val._value.Number = 0;
-
-            return val;
-
+            return new LoxValue(ValueType.VAL_NIL, 0);
         }
 
         /// <summary>
         /// Create a string object
         /// </summary>
-        /// <param name="s">The string</param>
+        /// <param name="s">The string object</param>
         /// <returns>The new value</returns>
-        public static VmValue StringObject(string s)
+        public static LoxValue StringObject(LoxString s)
         {
-            VmValue val = new VmValue()
-            {
-                Type = ValueType.VAL_OBJ
-            };
-
-            val._value.Object = VmObject.StringObject(s);
-
-            return val;
+            return new LoxValue(ValueType.VAL_OBJ, s);
         }
     }
 
@@ -226,6 +215,6 @@ namespace CsLoxByteCodeVm.Values
 
         public double Number;
 
-        public VmObject Object;
+        public LoxObject Object;
     }
 }

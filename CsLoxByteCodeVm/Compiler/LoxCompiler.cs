@@ -1,6 +1,7 @@
 ﻿using CsLoxByteCodeVm.Code;
 using CsLoxByteCodeVm.Debugging;
 using CsLoxByteCodeVm.Values;
+using CsLoxByteCodeVm.Vm;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -13,12 +14,15 @@ namespace CsLoxByteCodeVm.Compiler
         private Scanner _scanner;
         private CodeChunk _compiling_chunk;
         private readonly ParseRule[] _parse_rules;
+        private readonly VmMemoryManager _mem_manager;
 
         public bool DebugPrintCode {get; set;}
 
-        public LoxCompiler()
+        public LoxCompiler(VmMemoryManager mem_manager)
         {
+            _mem_manager = mem_manager;
             _parser = new Parser();
+            
 
             // Parse rules
             _parse_rules = new[] {
@@ -77,8 +81,9 @@ namespace CsLoxByteCodeVm.Compiler
             _parser.PanicMode = false;
 
             Advance();
-            Expression();
-            Consume(Scanner.TokenType.TOKEN_EOF, "Expected end of expression.");
+            while (!Match(Scanner.TokenType.TOKEN_EOF)) {
+                Declaration();
+            }
 
             EndCompiler();
             return !_parser.HadError;
@@ -118,6 +123,28 @@ namespace CsLoxByteCodeVm.Compiler
         }
 
         /// <summary>
+        /// Check if the current token is of the given type and consume it
+        /// </summary>
+        /// <param name="type">The token type</param>
+        /// <returns>True of the correct type</returns>
+        private bool Match(Scanner.TokenType type)
+        {
+            if (!Check(type)) return false;
+            Advance();
+            return true;
+        }
+
+        /// <summary>
+        /// Check if the current token is of a type
+        /// </summary>
+        /// <param name="type">The token type</param>
+        /// <returns>True if the right type</returns>
+        private bool Check(Scanner.TokenType type)
+        {
+            return _parser.Current.Type == type;
+        }
+
+        /// <summary>
         /// End compiling
         /// </summary>
         private void EndCompiler()
@@ -129,7 +156,7 @@ namespace CsLoxByteCodeVm.Compiler
                     Debug.DisassembleChunk(CurrentChunk(), "code");
                 }
             }
-            EmitReturn();
+            //EmitReturn();
         }
 
         /// <summary>
@@ -187,22 +214,69 @@ namespace CsLoxByteCodeVm.Compiler
         }
 
         /// <summary>
-        /// Parse a number
+        /// Parse a declaration
+        /// </summary>
+        private void Declaration()
+        {
+            Statement();
+        }
+
+        /// <summary>
+        /// Parse a statement
+        /// </summary>
+        private void Statement()
+        {
+            if (Match(Scanner.TokenType.TOKEN_PRINT))
+            {
+                PrintStatement();
+            }
+            else
+            {
+                ExpressionStatement();
+            }
+        }
+
+        /// <summary>
+        /// Parse a expression statement
+        /// </summary>
+        private void ExpressionStatement()
+        {
+            Expression();
+            Consume(Scanner.TokenType.TOKEN_SEMICOLON, "Expected ';' after expression.");
+            EmitByte(CodeChunk.OpCode.OP_POP);
+        }
+
+        /// <summary>
+        /// Compile a print statement
+        /// </summary>
+        private void PrintStatement()
+        {
+            Expression();
+            Consume(Scanner.TokenType.TOKEN_SEMICOLON, "Expected ';' after value.");
+            EmitByte(CodeChunk.OpCode.OP_PRINT);
+        }
+
+        /// <summary>
+        /// Compile a number
         /// </summary>
         private void Number()
         {
             double value = double.Parse(_parser.Previous.Text);
-            EmitConstant(VmValue.NumberValue(value));
+            EmitConstant(LoxValue.NumberValue(value));
         }
 
         /// <summary>
-        /// Parse a string
+        /// Compile a string
         /// </summary>
         private void String()
         {
             // Remove the quotes
-            string s = _parser.Previous.Text.Substring(1, _parser.Previous.Text.Length - 2);
-            EmitConstant(VmValue.StringObject(s));
+            string text = _parser.Previous.Text.Substring(1, _parser.Previous.Text.Length - 2);
+            
+            // Create a string object, making sure it is stored by the memory manager
+            LoxString s = _mem_manager.AllocateString(text);
+
+            EmitConstant(LoxValue.StringObject(s));
         }
 
         /// <summary>
@@ -332,12 +406,12 @@ namespace CsLoxByteCodeVm.Compiler
         /// Emit a constant OP_CONSTANT+VALUE
         /// </summary>
         /// <param name="value"></param>
-        private void EmitConstant(VmValue value)
+        private void EmitConstant(LoxValue value)
         {
             EmitBytes(CodeChunk.OpCode.OP_CONSTANT, MakeConstant(value));
         }
 
-        private byte MakeConstant(VmValue value)
+        private byte MakeConstant(LoxValue value)
         {
             // Add the value to the constant table
             int constant = CurrentChunk().AddConstant(value);

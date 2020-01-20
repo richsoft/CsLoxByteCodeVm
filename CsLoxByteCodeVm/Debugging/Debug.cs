@@ -31,6 +31,9 @@ namespace CsLoxByteCodeVm.Debugging
         /// <returns>The new offset</returns>
         public static int DisassembleInstruction(CodeChunk chunk, int offset)
         {
+
+            if (offset >= chunk.Code.Count) return offset;
+
             Console.Write($"{offset:0000} ");
 
             // Line number
@@ -56,6 +59,8 @@ namespace CsLoxByteCodeVm.Debugging
                     return SimpleInstruction("OP_TRUE", offset);
                 case (byte)CodeChunk.OpCode.OP_FALSE:
                     return SimpleInstruction("OP_FALSE", offset);
+                case (byte)CodeChunk.OpCode.OP_POP:
+                    return SimpleInstruction("OP_POP", offset);
                 case (byte)CodeChunk.OpCode.OP_EQUAL:
                     return SimpleInstruction("OP_EQUAL", offset);
                 case (byte)CodeChunk.OpCode.OP_GREATER:
@@ -74,6 +79,8 @@ namespace CsLoxByteCodeVm.Debugging
                     return SimpleInstruction("OP_NOT", offset);
                 case (byte)CodeChunk.OpCode.OP_NEGATE:
                     return SimpleInstruction("OP_NEGATE", offset);
+                case (byte)CodeChunk.OpCode.OP_PRINT:
+                    return SimpleInstruction("OP_PRINT", offset);
                 case (byte)CodeChunk.OpCode.OP_RETURN:
                     return SimpleInstruction("OP_RETURN", offset);
                 default:

@@ -8,7 +8,7 @@ namespace CsLoxByteCodeVm.Vm
     class VmStack
     {
         private const int MAX_STACK = 256;
-        VmValue[] _stack = new VmValue[MAX_STACK];
+        LoxValue[] _stack = new LoxValue[MAX_STACK];
         private int _top;
 
         /// <summary>
@@ -23,7 +23,7 @@ namespace CsLoxByteCodeVm.Vm
         /// Push an item onto the stack
         /// </summary>
         /// <param name="value"></param>
-        public void Push(VmValue value)
+        public void Push(LoxValue value)
         {
             _stack[_top] = value;
             _top++;
@@ -33,7 +33,7 @@ namespace CsLoxByteCodeVm.Vm
         /// Pop an item off the stack
         /// </summary>
         /// <returns>The item on the top of the stack</returns>
-        public VmValue Pop()
+        public LoxValue Pop()
         {
             _top--;
             return _stack[_top];
@@ -44,15 +44,15 @@ namespace CsLoxByteCodeVm.Vm
         /// </summary>
         /// <param name="distance">distance from the top</param>
         /// <returns>The value</returns>
-        public VmValue Peek(int distance)
+        public LoxValue Peek(int distance)
         {
             return _stack[(_top - 1) - distance];
         }
 
-        public VmValue[] ToArray()
+        public LoxValue[] ToArray()
         {
             int length = _top;
-            VmValue[] r = new VmValue[length];
+            LoxValue[] r = new LoxValue[length];
             Array.Copy(_stack, 0, r, 0, length);
             return r;
         }
