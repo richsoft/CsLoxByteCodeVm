@@ -47,7 +47,7 @@ namespace CsLoxByteCodeVm.Vm
         }
 
         /// <summary>
-        /// Free all objects
+        /// Free all objects - not really necessary as C# will garbage collect itself
         /// </summary>
         public void FreeObjects()
         {
@@ -69,6 +69,10 @@ namespace CsLoxByteCodeVm.Vm
         {
             switch (obj.Type)
             {
+                case LoxObject.ObjectType.OBJ_FUNCTION:
+                    LoxFunction function = (LoxFunction)obj;
+                    function.Chunk = null;
+                    break;
                 case LoxObject.ObjectType.OBJ_STRING:
                     break;
             }

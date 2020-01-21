@@ -7,9 +7,15 @@ namespace CsLoxByteCodeVm.Vm
 {
     class VmStack
     {
-        private const int MAX_STACK = 256;
-        LoxValue[] _stack = new LoxValue[MAX_STACK];
+
+        LoxValue[] _stack;
         private int _top;
+
+        public VmStack(int slots)
+        {
+            _stack = new LoxValue[slots];
+            _top = 0;
+        }
 
         public LoxValue this[int index]
         {

@@ -11,12 +11,12 @@ namespace CsLoxByteCodeVm.Compiler
     class LoxCompiler
     {
         private readonly Parser _parser;
-        private readonly Compiler _current;
         private readonly ParseRule[] _parse_rules;
         private readonly VmMemoryManager _mem_manager;
 
         private Scanner _scanner;
-        private CodeChunk _compiling_chunk;
+        private Compiler _current;
+        //private CodeChunk _compiling_chunk;
 
 
         public bool DebugPrintCode { get; set; }
@@ -25,7 +25,7 @@ namespace CsLoxByteCodeVm.Compiler
         {
             _mem_manager = mem_manager;
             _parser = new Parser();
-            _current = new Compiler();
+            _current = null;
 
             // Parse rules
             _parse_rules = new[] {
@@ -51,7 +51,7 @@ namespace CsLoxByteCodeVm.Compiler
                 new ParseRule(Variable, null, Precedence.PREC_NONE ),       // TOKEN_IDENTIFIER      
                 new ParseRule(String, null, Precedence.PREC_NONE ),       // TOKEN_STRING          
                 new ParseRule(Number, null, Precedence.PREC_NONE ),       // TOKEN_NUMBER          
-                new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_AND             
+                new ParseRule(null, And, Precedence.PREC_AND ),       // TOKEN_AND             
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_CLASS           
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_ELSE            
                 new ParseRule(Literal, null, Precedence.PREC_NONE ),       // TOKEN_FALSE           
@@ -59,7 +59,7 @@ namespace CsLoxByteCodeVm.Compiler
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_FUN             
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_IF              
                 new ParseRule(Literal, null, Precedence.PREC_NONE ),       // TOKEN_NIL             
-                new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_OR              
+                new ParseRule(null, Or, Precedence.PREC_OR ),       // TOKEN_OR              
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_PRINT           
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_RETURN          
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_SUPER           
@@ -76,12 +76,14 @@ namespace CsLoxByteCodeVm.Compiler
         /// Compile the source
         /// </summary>
         /// <param name="source"></param>
-        public bool Compile(string source, ref CodeChunk chunk)
+        public LoxFunction Compile(string source)
         {
             _scanner = new Scanner(source);
-            _compiling_chunk = chunk;
+            //_compiling_chunk = chunk;
             _parser.HadError = false;
             _parser.PanicMode = false;
+
+            InitCompiler(Compiler.FunctionType.TYPE_SCRIPT);
 
             Advance();
             while (!Match(Scanner.TokenType.TOKEN_EOF))
@@ -89,8 +91,8 @@ namespace CsLoxByteCodeVm.Compiler
                 Declaration();
             }
 
-            EndCompiler();
-            return !_parser.HadError;
+            LoxFunction function = EndCompiler();
+            return _parser.HadError ? null : function;
         }
 
         /// <summary>
@@ -148,19 +150,37 @@ namespace CsLoxByteCodeVm.Compiler
             return _parser.Current.Type == type;
         }
 
+        private void InitCompiler(Compiler.FunctionType type)
+        {
+            LoxString name = null;
+
+            if (type != Compiler.FunctionType.TYPE_SCRIPT)
+            {
+                name = _mem_manager.AllocateString(_parser.Previous.Text);
+            }
+
+            _current = new Compiler(type, name, _current);
+        }
+
         /// <summary>
         /// End compiling
         /// </summary>
-        private void EndCompiler()
+        private LoxFunction EndCompiler()
         {
+            EmitReturn();
+            LoxFunction function = _current.Function;
+
             if (DebugPrintCode)
             {
                 if (!_parser.HadError)
                 {
-                    Debug.DisassembleChunk(CurrentChunk(), "code");
+                    Debug.DisassembleChunk(CurrentChunk(), function?.Name?.Value ?? "<script>");
                 }
             }
-            EmitReturn();
+
+            // Set the current compiler back to the enclosing one
+            _current = _current.Enclosing;
+            return function;
         }
 
         /// <summary>
@@ -258,11 +278,56 @@ namespace CsLoxByteCodeVm.Compiler
         }
 
         /// <summary>
+        /// Compile function
+        /// </summary>
+        /// <param name="type">The function type</param>
+        private void Function(Compiler.FunctionType type)
+        {
+            InitCompiler(type);
+
+            BeginScope();
+
+            // Compile the parameter list
+            Consume(Scanner.TokenType.TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+            if (!Check(Scanner.TokenType.TOKEN_RIGHT_PAREN))
+            {
+                do
+                {
+                    _current.Function.Arity++;
+                    if (_current.Function.Arity > 255)
+                    {
+                        ErrorAtCurrent("Cannot have more then 255 parameters");
+                    }
+
+                    byte param_constant = ParseVariable("Expect parameter name.");
+                    DefineVariable(param_constant);
+                }
+                while (Match(Scanner.TokenType.TOKEN_COMMA));
+            }
+            Consume(Scanner.TokenType.TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+
+            // The body
+            Consume(Scanner.TokenType.TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+            Block();
+
+            // Create the function object
+            LoxFunction function = EndCompiler();
+            EmitBytes(CodeChunk.OpCode.OP_CONSTANT, MakeConstant(LoxValue.FunctionObject(function)));
+
+
+
+        }
+
+        /// <summary>
         /// Parse a declaration
         /// </summary>
         private void Declaration()
         {
-            if (Match(Scanner.TokenType.TOKEN_VAR))
+            if (Match(Scanner.TokenType.TOKEN_FUN))
+            {
+                FunDeclaration();
+            }
+            else if (Match(Scanner.TokenType.TOKEN_VAR))
             {
                 VarDeclaration();
             }
@@ -298,6 +363,17 @@ namespace CsLoxByteCodeVm.Compiler
         }
 
         /// <summary>
+        /// Compile function declaration
+        /// </summary>
+        public void FunDeclaration()
+        {
+            uint global = ParseVariable("Expect function name.");
+            MarkInitialised();
+            Function(Compiler.FunctionType.TYPE_FUNCTION);
+            DefineVariable(global);
+        }
+
+        /// <summary>
         /// Parse a statement
         /// </summary>
         private void Statement()
@@ -305,6 +381,18 @@ namespace CsLoxByteCodeVm.Compiler
             if (Match(Scanner.TokenType.TOKEN_PRINT))
             {
                 PrintStatement();
+            }
+            else if (Match(Scanner.TokenType.TOKEN_FOR))
+            {
+                ForStatement();
+            }
+            else if (Match(Scanner.TokenType.TOKEN_IF))
+            {
+                IfStatement();
+            }
+            else if (Match(Scanner.TokenType.TOKEN_WHILE))
+            {
+                WhileStatement();
             }
             else if (Match(Scanner.TokenType.TOKEN_LEFT_BRACE))
             {
@@ -329,6 +417,33 @@ namespace CsLoxByteCodeVm.Compiler
         }
 
         /// <summary>
+        /// Parse an if statement
+        /// </summary>
+        private void IfStatement()
+        {
+            Consume(Scanner.TokenType.TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+            // Compile the condition expression
+            Expression();
+            Consume(Scanner.TokenType.TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+            // Jump over the true
+            int then_jump = EmitJump(CodeChunk.OpCode.OP_JUMP_IF_FALSE);
+            EmitByte(CodeChunk.OpCode.OP_POP);
+            Statement();
+
+            // Jump over the else
+            int else_jump = EmitJump(CodeChunk.OpCode.OP_JUMP);
+
+            // Backpatch the jump for false
+            PatchJump(then_jump);
+            EmitByte(CodeChunk.OpCode.OP_POP);
+
+            if (Match(Scanner.TokenType.TOKEN_ELSE)) Statement();
+            // Back patch so true can jump over else
+            PatchJump(else_jump);
+        }
+
+        /// <summary>
         /// Compile a print statement
         /// </summary>
         private void PrintStatement()
@@ -336,6 +451,96 @@ namespace CsLoxByteCodeVm.Compiler
             Expression();
             Consume(Scanner.TokenType.TOKEN_SEMICOLON, "Expected ';' after value.");
             EmitByte(CodeChunk.OpCode.OP_PRINT);
+        }
+
+        /// <summary>
+        /// Compile a for statement
+        /// </summary>
+        private void ForStatement()
+        {
+            BeginScope();
+            Consume(Scanner.TokenType.TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+            
+            // Initaliser
+            if (Match(Scanner.TokenType.TOKEN_SEMICOLON))
+            {
+                // No initialiser
+            }
+            else if (Match(Scanner.TokenType.TOKEN_VAR))
+            {
+                VarDeclaration();
+            }
+            else
+            {
+                ExpressionStatement();
+            }
+
+            int loop_start = CurrentChunk().Code.Count;
+
+            // Condition expression
+            int exit_jump = -1;
+            if (!Match(Scanner.TokenType.TOKEN_SEMICOLON))
+            {
+                // There is a condition
+                Expression();
+                Consume(Scanner.TokenType.TOKEN_SEMICOLON, "Expect ';' after loop condition.");
+
+                // Jump out of loop if the condition is false
+                exit_jump = EmitJump(CodeChunk.OpCode.OP_JUMP_IF_FALSE);
+                EmitByte(CodeChunk.OpCode.OP_POP); // Condition
+            }
+
+            // Increment
+            // Compiled first, and then jumped over
+            // Each loop jumps back to the incrementer and then back into the body
+            if (!Match(Scanner.TokenType.TOKEN_RIGHT_PAREN)) {
+                int body_jump = EmitJump(CodeChunk.OpCode.OP_JUMP);
+
+                int increment_start = CurrentChunk().Code.Count;
+                Expression();
+                EmitByte(CodeChunk.OpCode.OP_POP);
+                Consume(Scanner.TokenType.TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
+
+                EmitLoop(loop_start);
+                loop_start = increment_start;
+                PatchJump(body_jump);
+            }
+
+            Statement();
+
+            EmitLoop(loop_start);
+
+            if (exit_jump != -1)
+            {
+                // There was condition so patch the jump out of the loop
+                PatchJump(exit_jump);
+                EmitByte(CodeChunk.OpCode.OP_POP);  // Condition;
+            }
+
+            EndScope();
+
+        }
+
+        /// <summary>
+        /// Compile a while statement
+        /// </summary>
+        private void WhileStatement()
+        {
+            int loop_start = CurrentChunk().Code.Count;
+
+            Consume(Scanner.TokenType.TOKEN_LEFT_PAREN, "Expect '(' after 'while.");
+            Expression();
+            Consume(Scanner.TokenType.TOKEN_RIGHT_BRACE, "Expect ')' after 'condition.");
+
+            int exit_jump = EmitJump(CodeChunk.OpCode.OP_JUMP_IF_FALSE);
+
+            EmitByte(CodeChunk.OpCode.OP_POP);
+            Statement();
+
+            EmitLoop(loop_start);
+
+            PatchJump(exit_jump);
+            EmitByte(CodeChunk.OpCode.OP_POP);
         }
 
         /// <summary>
@@ -472,6 +677,36 @@ namespace CsLoxByteCodeVm.Compiler
         }
 
         /// <summary>
+        /// Compile an AND
+        /// </summary>
+        /// <param name="can_assign"></param>
+        private void And(bool can_assign)
+        {
+            int end_jump = EmitJump(CodeChunk.OpCode.OP_JUMP_IF_FALSE);
+
+            EmitByte(CodeChunk.OpCode.OP_POP);
+            ParsePrecedence(Precedence.PREC_AND);
+
+            PatchJump(end_jump);
+        }
+
+        /// <summary>
+        /// Compile an OR
+        /// </summary>
+        /// <param name="can_assign"></param>
+        private void Or(bool can_assign)
+        {
+            int else_jump = EmitJump(CodeChunk.OpCode.OP_JUMP_IF_FALSE);
+            int end_jump = EmitJump(CodeChunk.OpCode.OP_JUMP);
+
+            PatchJump(else_jump);
+            EmitByte(CodeChunk.OpCode.OP_POP);
+
+            ParsePrecedence(Precedence.PREC_OR);
+            PatchJump(end_jump);
+        }
+
+        /// <summary>
         /// Parse based on precendence (high or equal)
         /// </summary>
         /// <param name="precedence">The precedence level</param>
@@ -508,7 +743,7 @@ namespace CsLoxByteCodeVm.Compiler
         /// </summary>
         /// <param name="error_message"></param>
         /// <returns>The constant index</returns>
-        private uint ParseVariable(string error_message)
+        private byte ParseVariable(string error_message)
         {
             Consume(Scanner.TokenType.TOKEN_IDENTIFIER, error_message);
 
@@ -526,6 +761,7 @@ namespace CsLoxByteCodeVm.Compiler
         /// </summary>
         private void MarkInitialised()
         {
+            if (_current.ScopeDepth == 0) return;
             _current.Locals[_current.LocalCount - 1].Depth = _current.ScopeDepth;
         }
 
@@ -544,12 +780,14 @@ namespace CsLoxByteCodeVm.Compiler
             EmitBytes(CodeChunk.OpCode.OP_DEFINE_GLOBAL, (byte)global);
         }
 
+
+
         /// <summary>
         /// Create a constant from a identifer
         /// </summary>
         /// <param name="token">The token</param>
         /// <returns>The constant index</returns>
-        private uint IdentifierConstant(Scanner.Token token)
+        private byte IdentifierConstant(Scanner.Token token)
         {
             return MakeConstant(LoxValue.StringObject(_mem_manager.AllocateString(token.Text)));
         }
@@ -562,7 +800,7 @@ namespace CsLoxByteCodeVm.Compiler
         /// <returns>True ii tokens are both identifiers, and the name is the same</returns>
         private bool IdentifiersEqual(Scanner.Token a, Scanner.Token b)
         {
-            return string.Equals(a.Text, b.Text);
+            return string.Equals(a?.Text, b?.Text);
         }
 
         /// <summary>
@@ -701,6 +939,34 @@ namespace CsLoxByteCodeVm.Compiler
         }
 
         /// <summary>
+        /// Emit a jump instruction, using placeholder jump operand
+        /// </summary>
+        /// <param name="instruction">The jump instruction to emit</param>
+        /// <returns>The offset of the jump</returns>
+        private int EmitJump(CodeChunk.OpCode instruction)
+        {
+            EmitByte(instruction);
+            EmitByte((byte)0xff);
+            EmitByte((byte)0xff);
+            return CurrentChunk().Code.Count - 2;
+        }
+
+        /// <summary>
+        /// Emit a loop instruction
+        /// </summary>
+        /// <param name="loop_start"></param>
+        private void EmitLoop(int loop_start)
+        {
+            EmitByte(CodeChunk.OpCode.OP_LOOP);
+
+            int offset = CurrentChunk().Code.Count - loop_start + 2;
+            if (offset > ushort.MaxValue) Error("Loop body too large.");
+
+            EmitByte((byte)((offset >> 8) & 0xff));
+            EmitByte((byte)(offset & 0xff));
+        }
+
+        /// <summary>
         /// Emit an OP_RETURN
         /// </summary>
         private void EmitReturn()
@@ -715,6 +981,26 @@ namespace CsLoxByteCodeVm.Compiler
         private void EmitConstant(LoxValue value)
         {
             EmitBytes(CodeChunk.OpCode.OP_CONSTANT, MakeConstant(value));
+        }
+
+        /// <summary>
+        /// Backpatch a jump instruction
+        /// </summary>
+        /// <param name="offset">The offset of the jump</param>
+        private void PatchJump(int offset)
+        {
+            // -2 to adjust for the bytecode for the jump offset
+            int jump = CurrentChunk().Code.Count - offset - 2;
+
+            if (jump > ushort.MaxValue)
+            {
+                Error("Too much code to jump over.");
+            }
+
+            // Get high and low bytes
+            CurrentChunk().Code[offset] = (byte)((jump >> 8) & 0xff);
+            CurrentChunk().Code[offset + 1] = (byte)(jump & 0xff);
+
         }
 
         private byte MakeConstant(LoxValue value)
@@ -787,7 +1073,7 @@ namespace CsLoxByteCodeVm.Compiler
         /// <returns>The current chunk</returns>
         private CodeChunk CurrentChunk()
         {
-            return _compiling_chunk;
+            return _current.Function.Chunk;
         }
 
         private class Parser
@@ -816,6 +1102,10 @@ namespace CsLoxByteCodeVm.Compiler
 
         private class Compiler
         {
+            public Compiler Enclosing;
+            public LoxFunction Function { get; set; }
+            public FunctionType Type { get; set; }
+
             public Local[] Locals { get; set; }
             public int LocalCount { get; set; }
             public int ScopeDepth { get; set; }
@@ -825,11 +1115,24 @@ namespace CsLoxByteCodeVm.Compiler
 
             public const int MAX_LOCALS = (byte.MaxValue + 1);
 
-            public Compiler()
+            public Compiler(FunctionType type, LoxString name = null, Compiler enclosing = null)
             {
+                Enclosing = enclosing;
                 Locals = new Local[MAX_LOCALS];
                 LocalCount = 0;
                 ScopeDepth = 0;
+                Function = new LoxFunction();
+                Type = type;
+
+                if (type != FunctionType.TYPE_SCRIPT)
+                {
+                    Function.Name = name;
+                }
+
+                Locals[LocalCount++] = new Local(null)
+                {
+                    Depth = 0
+                };
             }
 
             public class Local
@@ -843,6 +1146,12 @@ namespace CsLoxByteCodeVm.Compiler
                 {
                     Name = name;
                 }
+            }
+
+            public enum FunctionType
+            {
+                TYPE_FUNCTION,
+                TYPE_SCRIPT
             }
         }
 

@@ -129,7 +129,7 @@ namespace CsLoxByteCodeVm.Values
         /// </summary>
         /// <param name="value">The value to test</param>
         /// <returns>True if falsy</returns>
-        public bool IsFalsy()
+        public bool IsFalsey()
         {
             return IsNil() || (IsBoolean() && !AsBoolean());
         }
@@ -197,6 +197,16 @@ namespace CsLoxByteCodeVm.Values
         public static LoxValue StringObject(LoxString s)
         {
             return new LoxValue(ValueType.VAL_OBJ, s);
+        }
+
+        /// <summary>
+        /// Create a function object
+        /// </summary>
+        /// <param name="function">The function</param>
+        /// <returns>The function value</returns>
+        public static LoxValue FunctionObject(LoxFunction function)
+        {
+            return new LoxValue(ValueType.VAL_OBJ, function);
         }
     }
 

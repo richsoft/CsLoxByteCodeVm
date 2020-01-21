@@ -91,6 +91,12 @@ namespace CsLoxByteCodeVm.Debugging
                     return SimpleInstruction("OP_NEGATE", offset);
                 case CodeChunk.OpCode.OP_PRINT:
                     return SimpleInstruction("OP_PRINT", offset);
+                case CodeChunk.OpCode.OP_JUMP:
+                    return JumpInstruction("OP_JUMP", 1, chunk, offset);
+                case CodeChunk.OpCode.OP_JUMP_IF_FALSE:
+                    return JumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
+                case CodeChunk.OpCode.OP_LOOP:
+                    return JumpInstruction("OP_LOOP", -1, chunk, offset);
                 case CodeChunk.OpCode.OP_RETURN:
                     return SimpleInstruction("OP_RETURN", offset);
                 default:
@@ -128,11 +134,37 @@ namespace CsLoxByteCodeVm.Debugging
             return offset + 2;
         }
 
+        /// <summary>
+        /// Print a byte instrcution
+        /// </summary>
+        /// <param name="name">The opcode name</param>
+        /// <param name="chunk">The code chunk</param>
+        /// <param name="offset">The offset</param>
+        /// <returns>The new offset</returns>
         private static int ByteInstruction(string name, CodeChunk chunk, int offset)
         {
             byte slot = chunk.Code[offset + 1];
             Console.WriteLine($"{name,-16} {slot,4}");
             return offset + 2;
+        }
+
+        /// <summary>
+        /// Print a jump instrcution
+        /// </summary>
+        /// <param name="name">The opcode name</param>
+        /// <param name="sign"></param>
+        /// <param name="chunk">The code chunk</param>
+        /// <param name="offset">The offset</param>
+        /// <returns>The new offset</returns>
+        private static int JumpInstruction(string name, int sign, CodeChunk chunk, int offset)
+        {
+            // Stored in 2 bytes
+            ushort jump = (ushort)(chunk.Code[offset + 1] << 8);
+            jump |= chunk.Code[offset + 2];
+
+            Console.WriteLine($"{name,-16} {offset,4} -> {offset + 3 + sign * jump}");
+            return offset + 3;
+
         }
     }
 }

@@ -27,12 +27,22 @@ namespace CsLoxByteCodeVm.Values
         }
 
         /// <summary>
+        /// Check if object is a function
+        /// </summary>
+        /// <returns>Tryue if a function</returns>
+        public bool IsFunction()
+        {
+            return Type == ObjectType.OBJ_FUNCTION;
+        }
+
+        /// <summary>
         /// Print an object
         /// </summary>
         public abstract void PrintObject();
 
         public enum ObjectType
         {
+            OBJ_FUNCTION,
             OBJ_STRING
         }
     }

@@ -10,8 +10,16 @@ namespace CsLoxByteCodeVm.Vm
 {
     class LoxVm : IDisposable
     {
-        private CodeChunk _chunk;
-        private int _ip;
+        private const int MAX_FRAMES = 64;
+        private const int MAX_STACK = (MAX_FRAMES * byte.MaxValue + 1);
+
+
+        //private CodeChunk _chunk;
+        //private int _ip;
+
+        CallFrame[] _frames;
+        int _frameCount;
+
         private readonly VmStack _stack;
         private readonly VmMemoryManager _mem_manager;
 
@@ -19,7 +27,8 @@ namespace CsLoxByteCodeVm.Vm
 
         public LoxVm()
         {
-            _stack = new VmStack();
+            _frames = new CallFrame[MAX_FRAMES];
+            _stack = new VmStack(MAX_STACK);
             _mem_manager = new VmMemoryManager();
         }
 
@@ -32,20 +41,18 @@ namespace CsLoxByteCodeVm.Vm
         {
             LoxCompiler compiler = new LoxCompiler(_mem_manager);
 
-            CodeChunk chunk = new CodeChunk();
+            LoxFunction function = compiler.Compile(source);
+            if (function == null) return InterpretResult.CompileError;
 
-            // Try and complie the source code
-            if (!compiler.Compile(source, ref chunk))
+            _stack.Push(LoxValue.FunctionObject(function));
+            _frames[_frameCount++] = new CallFrame()
             {
-                return InterpretResult.CompileError;
-            }
+                Function = function,
+                Ip = 0,
+                SlotStart = 0
+            };
 
-            _stack.Reset();
-            _chunk = chunk;
-            _ip = 0;
-
-            InterpretResult result = Run();
-            return result;
+            return Run();
 
         }
 
@@ -55,6 +62,8 @@ namespace CsLoxByteCodeVm.Vm
         /// <returns>The result</returns>
         public InterpretResult Run()
         {
+            CallFrame frame = _frames[_frameCount - 1];
+
             while (true)
             {
                 if (DebugTraceExecution)
@@ -71,127 +80,178 @@ namespace CsLoxByteCodeVm.Vm
                     Console.WriteLine("");
 
                     // Print instruction
-                    Debug.DisassembleInstruction(_chunk, _ip);
+                    Debug.DisassembleInstruction(frame.Function.Chunk, frame.Ip);
                 }
 
                 // Get the instrcution and increment the IP
-                byte instruction = ReadByte();
-                bool r;
+                byte instruction = ReadByte(frame);
 
                 switch ((CodeChunk.OpCode)instruction)
                 {
                     case CodeChunk.OpCode.OP_CONSTANT:
-                        LoxValue constant = ReadConstant();
-                        _stack.Push(constant);
-                        break;
-
+                        {
+                            LoxValue constant = ReadConstant(frame);
+                            _stack.Push(constant);
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_NIL:
-                        _stack.Push(LoxValue.NilValue());
-                        break;
+                        {
+                            _stack.Push(LoxValue.NilValue());
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_TRUE:
-                        _stack.Push(LoxValue.BooleanValue(true));
-                        break;
+                        {
+                            _stack.Push(LoxValue.BooleanValue(true));
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_FALSE:
-                        _stack.Push(LoxValue.BooleanValue(false));
-                        break;
+                        {
+                            _stack.Push(LoxValue.BooleanValue(false));
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_POP:
-                        _stack.Pop(); 
-                        break;
-
+                        {
+                            _stack.Pop();
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_GET_LOCAL:
-                        byte local_get_slot = ReadByte();
-                        _stack.Push(_stack[local_get_slot]);
-                        break;
+                        {
+                            byte slot = ReadByte(frame);
+                            _stack.Push(_stack[frame.SlotStart + slot]);
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_SET_LOCAL:
-                        byte local_set_slot = ReadByte();
-                        _stack[local_set_slot] = _stack.Peek(0);
-                        break;
+                        {
+                            byte slot = ReadByte(frame);
+                            _stack[frame.SlotStart + slot] = _stack.Peek(0);
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_GET_GLOBAL:
-                        LoxString global_get_name = ReadString();
-                        LoxValue value;
-                        if (!_mem_manager.Globals.Get(global_get_name, out value))
                         {
-                            RuntimeError($"Undefined variable '{global_get_name.Value}'.");
-                            return InterpretResult.RuntimeError;
+                            LoxString name = ReadString(frame);
+                            LoxValue value;
+                            if (!_mem_manager.Globals.Get(name, out value))
+                            {
+                                RuntimeError($"Undefined variable '{name.Value}'.");
+                                return InterpretResult.RuntimeError;
+                            }
+                            _stack.Push(value);
+                            break;
                         }
-                        _stack.Push(value);
-                        break;
                     case CodeChunk.OpCode.OP_DEFINE_GLOBAL:
-                        LoxString global_def_name = ReadString();
-                        _mem_manager.Globals.Set(global_def_name, _stack.Peek(0));
-                        _stack.Pop();
-                        break;
+                        {
+                            LoxString name = ReadString(frame);
+                            _mem_manager.Globals.Set(name, _stack.Peek(0));
+                            _stack.Pop();
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_SET_GLOBAL:
-                        LoxString global_set_name = ReadString();
-                        if (_mem_manager.Globals.Set(global_set_name, _stack.Peek(0)))
                         {
-                            _mem_manager.Globals.Delete(global_set_name);
-                            RuntimeError($"Undefined variable '{global_set_name.Value}'.");
-                            return InterpretResult.RuntimeError;
+                            LoxString name = ReadString(frame);
+                            if (_mem_manager.Globals.Set(name, _stack.Peek(0)))
+                            {
+                                _mem_manager.Globals.Delete(name);
+                                RuntimeError($"Undefined variable '{name.Value}'.");
+                                return InterpretResult.RuntimeError;
+                            }
+                            break;
                         }
-                        break;
-
                     case CodeChunk.OpCode.OP_EQUAL:
-                        LoxValue b = _stack.Pop();
-                        LoxValue a = _stack.Pop();
-                        _stack.Push(LoxValue.BooleanValue(a.ValueEquals(b)));
-                        break;
-
+                        {
+                            LoxValue b = _stack.Pop();
+                            LoxValue a = _stack.Pop();
+                            _stack.Push(LoxValue.BooleanValue(a.ValueEquals(b)));
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_GREATER:
-                        r = BinaryOp(CodeChunk.OpCode.OP_GREATER);
-                        if (!r) return InterpretResult.RuntimeError;
-                        break;
+                        {
+                            bool r = BinaryOp(CodeChunk.OpCode.OP_GREATER);
+                            if (!r) return InterpretResult.RuntimeError;
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_LESS:
-                        r = BinaryOp(CodeChunk.OpCode.OP_LESS);
-                        if (!r) return InterpretResult.RuntimeError;
-                        break;
-
+                        {
+                            bool r = BinaryOp(CodeChunk.OpCode.OP_LESS);
+                            if (!r) return InterpretResult.RuntimeError;
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_ADD:
-                        if (_stack.Peek(0).IsString() && _stack.Peek(1).IsString())
                         {
-                            Concatenate();
+                            if (_stack.Peek(0).IsString() && _stack.Peek(1).IsString())
+                            {
+                                Concatenate();
+                            }
+                            else if (_stack.Peek(0).IsNumber() && _stack.Peek(1).IsNumber())
+                            {
+                                double b = _stack.Pop().AsNumber();
+                                double a = _stack.Pop().AsNumber();
+                                _stack.Push(LoxValue.NumberValue(a + b));
+                            }
+                            else
+                            {
+                                RuntimeError("Operands must be two numbers or two strings.");
+                                return InterpretResult.RuntimeError;
+                            }
+                            break;
                         }
-                        else if (_stack.Peek(0).IsNumber() && _stack.Peek(1).IsNumber())
-                        {
-                            double b_num = _stack.Pop().AsNumber();
-                            double a_num = _stack.Pop().AsNumber();
-                            _stack.Push(LoxValue.NumberValue(a_num + b_num));
-                        }
-                        else
-                        {
-                            RuntimeError("Operands must be two numbers or two strings.");
-                            return InterpretResult.RuntimeError;
-                        }
-                        break;
                     case CodeChunk.OpCode.OP_SUBTRACT:
-                        r = BinaryOp(CodeChunk.OpCode.OP_SUBTRACT);
-                        if (!r) return InterpretResult.RuntimeError;
-                        break;
-                    case CodeChunk.OpCode.OP_MULTIPLY:
-                        r = BinaryOp(CodeChunk.OpCode.OP_MULTIPLY);
-                        if (!r) return InterpretResult.RuntimeError;
-                        break;
-                    case CodeChunk.OpCode.OP_DIVIDE:
-                        r = BinaryOp(CodeChunk.OpCode.OP_DIVIDE);
-                        if (!r) return InterpretResult.RuntimeError;
-                        break;
-                    case CodeChunk.OpCode.OP_NOT:
-                        _stack.Push(LoxValue.BooleanValue(_stack.Pop().IsFalsy()));
-                        break;
-                    case CodeChunk.OpCode.OP_NEGATE:
-                        if (!_stack.Peek(0).IsNumber())
                         {
-                            RuntimeError("Operand must be a number.");
-                            return InterpretResult.RuntimeError;
+                            bool r = BinaryOp(CodeChunk.OpCode.OP_SUBTRACT);
+                            if (!r) return InterpretResult.RuntimeError;
+                            break;
                         }
-                        _stack.Push(LoxValue.NumberValue(-_stack.Pop().AsNumber()));
-                        break;
+                    case CodeChunk.OpCode.OP_MULTIPLY:
+                        {
+                            bool r = BinaryOp(CodeChunk.OpCode.OP_MULTIPLY);
+                            if (!r) return InterpretResult.RuntimeError;
+                            break;
+                        }
+                    case CodeChunk.OpCode.OP_DIVIDE:
+                        {
+                            bool r = BinaryOp(CodeChunk.OpCode.OP_DIVIDE);
+                            if (!r) return InterpretResult.RuntimeError;
+                            break;
+                        }
+                    case CodeChunk.OpCode.OP_NOT:
+                        {
+                            _stack.Push(LoxValue.BooleanValue(_stack.Pop().IsFalsey()));
+                            break;
+                        }
+                    case CodeChunk.OpCode.OP_NEGATE:
+                        {
+                            if (!_stack.Peek(0).IsNumber())
+                            {
+                                RuntimeError("Operand must be a number.");
+                                return InterpretResult.RuntimeError;
+                            }
+                            _stack.Push(LoxValue.NumberValue(-_stack.Pop().AsNumber()));
+                            break;
+                        }
 
                     case CodeChunk.OpCode.OP_PRINT:
-                        _stack.Pop().PrintValue();
-                        Console.WriteLine();
-                        break;
-
+                        {
+                            _stack.Pop().PrintValue();
+                            Console.WriteLine();
+                            break;
+                        }
+                    case CodeChunk.OpCode.OP_JUMP:
+                        {
+                            ushort offset = ReadShort(frame);
+                            frame.Ip += offset;
+                            break;
+                        }
+                    case CodeChunk.OpCode.OP_JUMP_IF_FALSE:
+                        {
+                            ushort offset = ReadShort(frame);
+                            if (_stack.Peek(0).IsFalsey()) frame.Ip += offset;
+                            break;
+                        }
+                    case CodeChunk.OpCode.OP_LOOP:
+                        {
+                            ushort offset = ReadShort(frame);
+                            frame.Ip -= offset;
+                            break;
+                        }
                     case CodeChunk.OpCode.OP_RETURN:
                         return InterpretResult.OK;
 
@@ -203,28 +263,39 @@ namespace CsLoxByteCodeVm.Vm
         /// <summary>
         /// Read the next byte and increment the IP
         /// </summary>
-        /// <returns></returns>
-        private byte ReadByte()
+        /// <returns>The byte</returns>
+        private byte ReadByte(CallFrame frame)
         {
-            return _chunk.Code[_ip++];
+            return frame.Function.Chunk.Code[frame.Ip++];
+        }
+
+        /// <summary>
+        /// Read the next short (16bits) and increment the IP
+        /// </summary>
+        /// <returns></returns>
+        private ushort ReadShort(CallFrame frame)
+        {
+            // Get the next two bytes and convert to a ushort
+            frame.Ip += 2;
+            return (ushort)(frame.Function.Chunk.Code[frame.Ip - 2] | frame.Function.Chunk.Code[frame.Ip - 1]);
         }
 
         /// <summary>
         /// Read a constant using the current byte as a index.  Increments the IP
         /// </summary>
         /// <returns>The constant</returns>
-        private LoxValue ReadConstant()
+        private LoxValue ReadConstant(CallFrame frame)
         {
-            return _chunk.Constants.Values[ReadByte()];
+            return frame.Function.Chunk.Constants.Values[ReadByte(frame)];
         }
 
         /// <summary>
         /// Read a constant string using the current byte as the index
         /// </summary>
         /// <returns></returns>
-        private LoxString ReadString()
+        private LoxString ReadString(CallFrame frame)
         {
-            return ((LoxString)ReadConstant().AsObject());
+            return ((LoxString)ReadConstant(frame).AsObject());
         }
 
         /// <summary>
@@ -292,9 +363,10 @@ namespace CsLoxByteCodeVm.Vm
         /// <param name="args">The arguments</param>
         private void RuntimeError(string format, params string[] args)
         {
-            Console.Error.WriteLine(string.Format(format, args));
+            CallFrame frame = _frames[_frameCount - 1];
+            byte instruction = frame.Function.Chunk.Code[frame.Ip];
+            int line = frame.Function.Chunk.Lines[frame.Ip];
 
-            int line = _chunk.Lines[_ip];
             Console.Error.WriteLine($"[line {line}] in script");
 
             _stack.Reset();
@@ -302,7 +374,7 @@ namespace CsLoxByteCodeVm.Vm
 
         public void Dispose()
         {
-            
+
         }
 
         public enum InterpretResult
@@ -312,6 +384,11 @@ namespace CsLoxByteCodeVm.Vm
             RuntimeError
         }
 
+        private class CallFrame {
+            public LoxFunction Function { get; set; }
+            public int Ip { get; set; }
+            public int SlotStart { get; set; }
 
+            }
     }
 }

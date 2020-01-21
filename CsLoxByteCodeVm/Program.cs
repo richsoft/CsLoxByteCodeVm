@@ -14,10 +14,19 @@ namespace CsLoxByteCodeVm
 
         static int Main(string[] args)
         {
-
-            using (vm = new LoxVm() { DebugTraceExecution = true })
+            string script_name = "test.lox";
+            string script_path = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "Scripts", script_name);
+            
+            using (vm = new LoxVm() { DebugTraceExecution = false })
             {
-                Repl();
+                if (string.IsNullOrEmpty(script_name)) {
+                    Repl();
+                }
+                else
+                {
+                    RunFile(script_path);
+                }
+                
             }
 
             return 0;
