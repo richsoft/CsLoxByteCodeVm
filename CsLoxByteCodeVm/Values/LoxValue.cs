@@ -8,7 +8,7 @@ namespace CsLoxByteCodeVm.Values
     class LoxValue
     {
         public ValueType Type { get; set; }
-        private object _value;
+        private readonly object _value;
 
         private LoxValue() { }
 
@@ -208,6 +208,16 @@ namespace CsLoxByteCodeVm.Values
         {
             return new LoxValue(ValueType.VAL_OBJ, function);
         }
+
+        /// <summary>
+        /// Create a function object
+        /// </summary>
+        /// <param name="function">The function</param>
+        /// <returns>The function value</returns>
+        public static LoxValue NativeFunctionObject(LoxNativeFunction native)
+        {
+            return new LoxValue(ValueType.VAL_OBJ, native);
+        }
     }
 
     public enum ValueType
@@ -216,15 +226,5 @@ namespace CsLoxByteCodeVm.Values
         VAL_NIL,
         VAL_NUMBER,
         VAL_OBJ
-    }
-
-    //[StructLayout(LayoutKind.Explicit)]
-    public struct Value
-    {
-        public bool Boolean;
-
-        public double Number;
-
-        public LoxObject Object;
     }
 }

@@ -11,9 +11,9 @@ namespace CsLoxByteCodeVm.Values
         public CodeChunk Chunk { get; set; }
         public LoxString Name { get; set; }
 
-        public LoxFunction()
+        public LoxFunction() : base(ObjectType.OBJ_FUNCTION)
         {
-            Name = new LoxString("");
+            Name = null;
             Arity = 0;
             Chunk = new CodeChunk();
         }

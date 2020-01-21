@@ -9,7 +9,7 @@ namespace CsLoxByteCodeVm.Vm
     {
 
         LoxValue[] _stack;
-        public int Top { get; private set; }
+        public int Top { get; set; }
 
         public VmStack(int slots)
         {
@@ -27,6 +27,19 @@ namespace CsLoxByteCodeVm.Vm
             {
                 _stack[index] = value;
             }
+        }
+
+        /// <summary>
+        /// Get top num item from the stack
+        /// </summary>
+        /// <param name="num">The numbe of items</param>
+        /// <returns>The top items</returns>
+        public LoxValue[] GetTop(int num)
+        {
+            LoxValue[] items = new LoxValue[num];
+            Array.Copy(_stack, Top - num, items, 0, num);
+
+            return items;
         }
 
         /// <summary>

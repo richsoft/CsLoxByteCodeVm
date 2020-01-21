@@ -36,6 +36,15 @@ namespace CsLoxByteCodeVm.Values
         }
 
         /// <summary>
+        /// Check if objects is a native function
+        /// </summary>
+        /// <returns>True if a native function</returns>
+        public bool IsNative()
+        {
+            return Type == ObjectType.OBJ_NATIVE;
+        }
+
+        /// <summary>
         /// Print an object
         /// </summary>
         public abstract void PrintObject();
@@ -43,6 +52,7 @@ namespace CsLoxByteCodeVm.Values
         public enum ObjectType
         {
             OBJ_FUNCTION,
+            OBJ_NATIVE,
             OBJ_STRING
         }
     }

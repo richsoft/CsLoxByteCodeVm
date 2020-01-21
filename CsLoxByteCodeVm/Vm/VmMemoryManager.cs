@@ -70,11 +70,21 @@ namespace CsLoxByteCodeVm.Vm
             switch (obj.Type)
             {
                 case LoxObject.ObjectType.OBJ_FUNCTION:
-                    LoxFunction function = (LoxFunction)obj;
-                    function.Chunk = null;
-                    break;
+                    {
+                        LoxFunction function = (LoxFunction)obj;
+                        break;
+                    }
+                case LoxObject.ObjectType.OBJ_NATIVE:
+                    {
+                        LoxNativeFunction native = (LoxNativeFunction)obj;
+                        break;
+                    }
                 case LoxObject.ObjectType.OBJ_STRING:
-                    break;
+                    {
+                        LoxString s = (LoxString)obj;
+                        break;
+                    }
+
             }
         }
 

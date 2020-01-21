@@ -220,7 +220,7 @@ namespace CsLoxByteCodeVm.Compiler
         private void Call(bool can_assign)
         {
             byte arg_count = ArgumentList();
-            EmitByte(CodeChunk.OpCode.OP_CALL, arg_count)
+            EmitBytes(CodeChunk.OpCode.OP_CALL, arg_count);
         }
 
         /// <summary>
@@ -400,6 +400,9 @@ namespace CsLoxByteCodeVm.Compiler
             {
                 IfStatement();
             }
+            else if (Match(Scanner.TokenType.TOKEN_RETURN)) {
+                ReturnStatement();
+            }
             else if (Match(Scanner.TokenType.TOKEN_WHILE))
             {
                 WhileStatement();
@@ -551,6 +554,31 @@ namespace CsLoxByteCodeVm.Compiler
 
             PatchJump(exit_jump);
             EmitByte(CodeChunk.OpCode.OP_POP);
+        }
+
+        /// <summary>
+        /// Compile a return statement
+        /// </summary>
+        private void ReturnStatement()
+        {
+            // Make sure we can return from the top level
+            if (_current.Type == Compiler.FunctionType.TYPE_SCRIPT)
+            {
+                Error("Cannot return from top-level code.");
+            }
+
+            if (Match(Scanner.TokenType.TOKEN_SEMICOLON))
+            {
+                // Nothing to return
+                EmitReturn();
+            }
+            else
+            {
+                // Compile the returned expression
+                Expression();
+                Consume(Scanner.TokenType.TOKEN_SEMICOLON, "Expect ';' after return value.");
+                EmitByte(CodeChunk.OpCode.OP_RETURN);
+            }
         }
 
         /// <summary>
@@ -803,9 +831,9 @@ namespace CsLoxByteCodeVm.Compiler
                 {
                     Expression();
 
-                    if (argCount == 255)
+                    if (arg_count == 255)
                     {
-                        error("Cannot have more than 255 arguments.");
+                        Error("Cannot have more than 255 arguments.");
                     }
 
                     arg_count++;
@@ -1007,6 +1035,7 @@ namespace CsLoxByteCodeVm.Compiler
         /// </summary>
         private void EmitReturn()
         {
+            EmitByte(CodeChunk.OpCode.OP_NIL);
             EmitByte(CodeChunk.OpCode.OP_RETURN);
         }
 

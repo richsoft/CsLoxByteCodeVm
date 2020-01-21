@@ -22,6 +22,7 @@ namespace CsLoxByteCodeVm.Vm
 
         private readonly VmStack _stack;
         private readonly VmMemoryManager _mem_manager;
+        private readonly VmNativeFunctions _native_functions;
 
         public bool DebugTraceExecution { get; set; }
 
@@ -30,6 +31,9 @@ namespace CsLoxByteCodeVm.Vm
             _frames = new CallFrame[MAX_FRAMES];
             _stack = new VmStack(MAX_STACK);
             _mem_manager = new VmMemoryManager();
+            _native_functions = new VmNativeFunctions(_mem_manager);
+
+            DefineNative("clock", _native_functions.Clock);
         }
 
         /// <summary>
@@ -258,8 +262,24 @@ namespace CsLoxByteCodeVm.Vm
                             break;
                         }
                     case CodeChunk.OpCode.OP_RETURN:
-                        return InterpretResult.OK;
+                        {
+                            LoxValue result = _stack.Pop();
 
+                            _frameCount--;
+                            // Program ended
+                            if (_frameCount == 0)
+                            {
+                                _stack.Pop();
+                                return InterpretResult.OK;
+                            }
+
+                            // Reset the stack and push the result
+                            _stack.Top = frame.SlotStart;
+                            _stack.Push(result);
+
+                            frame = _frames[_frameCount - 1];
+                            break;
+                        }
                 }
 
             }
@@ -374,18 +394,34 @@ namespace CsLoxByteCodeVm.Vm
                 switch (callee.AsObject().Type)
                 {
                     case LoxObject.ObjectType.OBJ_FUNCTION:
-                        return Call((LoxFunction)(callee.AsObject()), arg_count);
+                        {
+                            return Call((LoxFunction)(callee.AsObject()), arg_count);
+                        }
+                    case LoxObject.ObjectType.OBJ_NATIVE:
+                        {
+                            LoxNativeFunction native = (LoxNativeFunction)(callee.AsObject());
+                            // We need to get the items from the stack, as we can't just point at them like in C
+                            LoxValue[] args = _stack.GetTop(arg_count);
+
+                            LoxValue result = native.Function(args);
+
+                            // Remove the arguments from the stack
+                            _stack.Top -= arg_count + 1;
+                            _stack.Push(result);
+                            return true;
+
+                        }
 
                     default:
                         // Not callable
                         break;
                 }
-
-                RuntimeError("Can only call functions and classes.");
-                return false;
             }
+
+            RuntimeError("Can only call functions and classes.");
+            return false;
         }
-         
+
         /// <summary>
         /// Call a function by setting a new call frame
         /// </summary>
@@ -422,13 +458,49 @@ namespace CsLoxByteCodeVm.Vm
         /// <param name="args">The arguments</param>
         private void RuntimeError(string format, params object[] args)
         {
-            CallFrame frame = _frames[_frameCount - 1];
-            byte instruction = frame.Function.Chunk.Code[frame.Ip];
-            int line = frame.Function.Chunk.Lines[frame.Ip];
+            Console.Error.WriteLine(format, args);
 
-            Console.Error.WriteLine($"[line {line}] in script");
+            //CallFrame frame = _frames[_frameCount - 1];
+            //byte instruction = frame.Function.Chunk.Code[frame.Ip];
+            //int line = frame.Function.Chunk.Lines[frame.Ip];
+
+            //Console.Error.WriteLine($"[line {line}] in script");
+
+            for (int i = _frameCount - 1; i >= 0; i--)
+            {
+                CallFrame stack_frame = _frames[i];
+                LoxFunction function = stack_frame.Function;
+
+                // -1 because the IP is sitting on the next instruction
+                byte instuct = function.Chunk.Code[stack_frame.Ip - 1];
+                Console.Error.Write($"[line {function.Chunk.Lines[stack_frame.Ip - 1]}] in ");
+
+                if (function.Name == null)
+                {
+                    Console.Error.WriteLine("script");
+                }
+                else
+                {
+                    Console.Error.WriteLine($"{function.Name.Value}()");
+                }
+            }
 
             _stack.Reset();
+        }
+
+        /// <summary>
+        /// Define a native function
+        /// </summary>
+        /// <param name="name">The function name</param>
+        /// <param name="function">The function to call</param>
+        private void DefineNative(string name, Func<LoxValue[], LoxValue> function)
+        {
+            _stack.Push(LoxValue.StringObject(_mem_manager.AllocateString(name)));
+            _stack.Push(LoxValue.NativeFunctionObject(new LoxNativeFunction(function)));
+
+            _mem_manager.Globals.Set((LoxString)(_stack[0].AsObject()), _stack[1]);
+            _stack.Pop();
+            _stack.Pop();
         }
 
         public void Dispose()
@@ -443,11 +515,12 @@ namespace CsLoxByteCodeVm.Vm
             INTERPRET_RUNTIME_ERROR
         }
 
-        private class CallFrame {
+        private class CallFrame
+        {
             public LoxFunction Function { get; set; }
             public int Ip { get; set; }
             public int SlotStart { get; set; }
 
-            }
+        }
     }
 }
