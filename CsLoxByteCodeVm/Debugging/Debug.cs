@@ -97,6 +97,8 @@ namespace CsLoxByteCodeVm.Debugging
                     return JumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
                 case CodeChunk.OpCode.OP_LOOP:
                     return JumpInstruction("OP_LOOP", -1, chunk, offset);
+                case CodeChunk.OpCode.OP_CALL:
+                    return ByteInstruction("OP_CALL", chunk, offset);
                 case CodeChunk.OpCode.OP_RETURN:
                     return SimpleInstruction("OP_RETURN", offset);
                 default:

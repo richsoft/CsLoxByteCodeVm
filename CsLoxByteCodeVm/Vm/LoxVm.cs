@@ -42,15 +42,10 @@ namespace CsLoxByteCodeVm.Vm
             LoxCompiler compiler = new LoxCompiler(_mem_manager);
 
             LoxFunction function = compiler.Compile(source);
-            if (function == null) return InterpretResult.CompileError;
+            if (function == null) return InterpretResult.INTERPRET_COMPILE_ERROR;
 
             _stack.Push(LoxValue.FunctionObject(function));
-            _frames[_frameCount++] = new CallFrame()
-            {
-                Function = function,
-                Ip = 0,
-                SlotStart = 0
-            };
+            CallValue(LoxValue.FunctionObject(function), 0);
 
             return Run();
 
@@ -133,7 +128,7 @@ namespace CsLoxByteCodeVm.Vm
                             if (!_mem_manager.Globals.Get(name, out value))
                             {
                                 RuntimeError($"Undefined variable '{name.Value}'.");
-                                return InterpretResult.RuntimeError;
+                                return InterpretResult.INTERPRET_RUNTIME_ERROR;
                             }
                             _stack.Push(value);
                             break;
@@ -152,7 +147,7 @@ namespace CsLoxByteCodeVm.Vm
                             {
                                 _mem_manager.Globals.Delete(name);
                                 RuntimeError($"Undefined variable '{name.Value}'.");
-                                return InterpretResult.RuntimeError;
+                                return InterpretResult.INTERPRET_RUNTIME_ERROR;
                             }
                             break;
                         }
@@ -166,13 +161,13 @@ namespace CsLoxByteCodeVm.Vm
                     case CodeChunk.OpCode.OP_GREATER:
                         {
                             bool r = BinaryOp(CodeChunk.OpCode.OP_GREATER);
-                            if (!r) return InterpretResult.RuntimeError;
+                            if (!r) return InterpretResult.INTERPRET_RUNTIME_ERROR;
                             break;
                         }
                     case CodeChunk.OpCode.OP_LESS:
                         {
                             bool r = BinaryOp(CodeChunk.OpCode.OP_LESS);
-                            if (!r) return InterpretResult.RuntimeError;
+                            if (!r) return InterpretResult.INTERPRET_RUNTIME_ERROR;
                             break;
                         }
                     case CodeChunk.OpCode.OP_ADD:
@@ -190,26 +185,26 @@ namespace CsLoxByteCodeVm.Vm
                             else
                             {
                                 RuntimeError("Operands must be two numbers or two strings.");
-                                return InterpretResult.RuntimeError;
+                                return InterpretResult.INTERPRET_RUNTIME_ERROR;
                             }
                             break;
                         }
                     case CodeChunk.OpCode.OP_SUBTRACT:
                         {
                             bool r = BinaryOp(CodeChunk.OpCode.OP_SUBTRACT);
-                            if (!r) return InterpretResult.RuntimeError;
+                            if (!r) return InterpretResult.INTERPRET_RUNTIME_ERROR;
                             break;
                         }
                     case CodeChunk.OpCode.OP_MULTIPLY:
                         {
                             bool r = BinaryOp(CodeChunk.OpCode.OP_MULTIPLY);
-                            if (!r) return InterpretResult.RuntimeError;
+                            if (!r) return InterpretResult.INTERPRET_RUNTIME_ERROR;
                             break;
                         }
                     case CodeChunk.OpCode.OP_DIVIDE:
                         {
                             bool r = BinaryOp(CodeChunk.OpCode.OP_DIVIDE);
-                            if (!r) return InterpretResult.RuntimeError;
+                            if (!r) return InterpretResult.INTERPRET_RUNTIME_ERROR;
                             break;
                         }
                     case CodeChunk.OpCode.OP_NOT:
@@ -222,7 +217,7 @@ namespace CsLoxByteCodeVm.Vm
                             if (!_stack.Peek(0).IsNumber())
                             {
                                 RuntimeError("Operand must be a number.");
-                                return InterpretResult.RuntimeError;
+                                return InterpretResult.INTERPRET_RUNTIME_ERROR;
                             }
                             _stack.Push(LoxValue.NumberValue(-_stack.Pop().AsNumber()));
                             break;
@@ -250,6 +245,16 @@ namespace CsLoxByteCodeVm.Vm
                         {
                             ushort offset = ReadShort(frame);
                             frame.Ip -= offset;
+                            break;
+                        }
+                    case CodeChunk.OpCode.OP_CALL:
+                        {
+                            int arg_count = ReadByte(frame);
+                            if (!CallValue(_stack.Peek(arg_count), arg_count))
+                            {
+                                return InterpretResult.INTERPRET_RUNTIME_ERROR;
+                            }
+                            frame = _frames[_frameCount - 1];
                             break;
                         }
                     case CodeChunk.OpCode.OP_RETURN:
@@ -345,7 +350,7 @@ namespace CsLoxByteCodeVm.Vm
         /// <summary>
         /// Concatenate strings
         /// </summary>
-        public void Concatenate()
+        private void Concatenate()
         {
             string b = ((LoxString)_stack.Pop().AsObject()).AsString();
             string a = ((LoxString)_stack.Pop().AsObject()).AsString();
@@ -357,11 +362,65 @@ namespace CsLoxByteCodeVm.Vm
         }
 
         /// <summary>
+        /// Try and call a value
+        /// </summary>
+        /// <param name="callee">The callee</param>
+        /// <param name="arg_count">The argument count</param>
+        /// <returns>Treu if we can call</returns>
+        private bool CallValue(LoxValue callee, int arg_count)
+        {
+            if (callee.IsObject())
+            {
+                switch (callee.AsObject().Type)
+                {
+                    case LoxObject.ObjectType.OBJ_FUNCTION:
+                        return Call((LoxFunction)(callee.AsObject()), arg_count);
+
+                    default:
+                        // Not callable
+                        break;
+                }
+
+                RuntimeError("Can only call functions and classes.");
+                return false;
+            }
+        }
+         
+        /// <summary>
+        /// Call a function by setting a new call frame
+        /// </summary>
+        /// <param name="function">The function</param>
+        /// <param name="arg_count">The argument count</param>
+        /// <returns>True if call success</returns>
+        private bool Call(LoxFunction function, int arg_count)
+        {
+            if (arg_count != function.Arity)
+            {
+                RuntimeError("Expected {0} arguments but got {1}.", function.Arity, arg_count);
+                return false;
+            }
+
+            if (_frameCount == MAX_FRAMES)
+            {
+                RuntimeError("Stack overflow.");
+                return false;
+            }
+
+            _frames[_frameCount++] = new CallFrame()
+            {
+                Function = function,
+                Ip = 0,
+                SlotStart = _stack.Top - arg_count - 1
+            };
+            return true;
+        }
+
+        /// <summary>
         /// Display a runtime error
         /// </summary>
         /// <param name="format">The format</param>
         /// <param name="args">The arguments</param>
-        private void RuntimeError(string format, params string[] args)
+        private void RuntimeError(string format, params object[] args)
         {
             CallFrame frame = _frames[_frameCount - 1];
             byte instruction = frame.Function.Chunk.Code[frame.Ip];
@@ -380,8 +439,8 @@ namespace CsLoxByteCodeVm.Vm
         public enum InterpretResult
         {
             OK,
-            CompileError,
-            RuntimeError
+            INTERPRET_COMPILE_ERROR,
+            INTERPRET_RUNTIME_ERROR
         }
 
         private class CallFrame {

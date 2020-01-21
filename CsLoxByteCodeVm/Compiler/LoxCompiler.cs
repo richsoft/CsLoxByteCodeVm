@@ -29,7 +29,7 @@ namespace CsLoxByteCodeVm.Compiler
 
             // Parse rules
             _parse_rules = new[] {
-                new ParseRule(Grouping, null, Precedence.PREC_NONE),       // TOKEN_LEFT_PAREN
+                new ParseRule(Grouping, Call, Precedence.PREC_CALL),       // TOKEN_LEFT_PAREN
                 new ParseRule( null, null, Precedence.PREC_NONE ),       // TOKEN_RIGHT_PAREN     
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_LEFT_BRACE
                 new ParseRule(null, null, Precedence.PREC_NONE ),       // TOKEN_RIGHT_BRACE     
@@ -211,6 +211,16 @@ namespace CsLoxByteCodeVm.Compiler
                 default:
                     return; // Unreachable.    
             }
+        }
+
+        /// <summary>
+        /// Parse a function call
+        /// </summary>
+        /// <param name="can_assign"></param>
+        private void Call(bool can_assign)
+        {
+            byte arg_count = ArgumentList();
+            EmitByte(CodeChunk.OpCode.OP_CALL, arg_count)
         }
 
         /// <summary>
@@ -780,7 +790,33 @@ namespace CsLoxByteCodeVm.Compiler
             EmitBytes(CodeChunk.OpCode.OP_DEFINE_GLOBAL, (byte)global);
         }
 
+        /// <summary>
+        /// Parse a argument list
+        /// </summary>
+        /// <returns></returns>
+        private byte ArgumentList()
+        {
+            byte arg_count = 0;
+            if (!Check(Scanner.TokenType.TOKEN_RIGHT_PAREN))
+            {
+                do
+                {
+                    Expression();
 
+                    if (argCount == 255)
+                    {
+                        error("Cannot have more than 255 arguments.");
+                    }
+
+                    arg_count++;
+                }
+                while (Match(Scanner.TokenType.TOKEN_COMMA));
+            }
+
+            Consume(Scanner.TokenType.TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+
+            return arg_count;
+        }
 
         /// <summary>
         /// Create a constant from a identifer

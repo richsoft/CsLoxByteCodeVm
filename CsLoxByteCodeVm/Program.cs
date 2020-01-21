@@ -67,7 +67,7 @@ namespace CsLoxByteCodeVm
             LoxVm.InterpretResult result = vm.Interpret(source);
 
             if (result == LoxVm.InterpretResult.CompileError) Environment.Exit(65);
-            if (result == LoxVm.InterpretResult.RuntimeError) Environment.Exit(70);
+            if (result == LoxVm.InterpretResult.INTERPRET_RUNTIME_ERROR) Environment.Exit(70);
 
         }
 

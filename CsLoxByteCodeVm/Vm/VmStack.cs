@@ -9,12 +9,12 @@ namespace CsLoxByteCodeVm.Vm
     {
 
         LoxValue[] _stack;
-        private int _top;
+        public int Top { get; private set; }
 
         public VmStack(int slots)
         {
             _stack = new LoxValue[slots];
-            _top = 0;
+            Top = 0;
         }
 
         public LoxValue this[int index]
@@ -34,7 +34,7 @@ namespace CsLoxByteCodeVm.Vm
         /// </summary>
         public void Reset()
         {
-            _top = 0;
+            Top = 0;
         }
 
         /// <summary>
@@ -43,8 +43,8 @@ namespace CsLoxByteCodeVm.Vm
         /// <param name="value"></param>
         public void Push(LoxValue value)
         {
-            _stack[_top] = value;
-            _top++;
+            _stack[Top] = value;
+            Top++;
         }
 
         /// <summary>
@@ -53,8 +53,8 @@ namespace CsLoxByteCodeVm.Vm
         /// <returns>The item on the top of the stack</returns>
         public LoxValue Pop()
         {
-            _top--;
-            return _stack[_top];
+            Top--;
+            return _stack[Top];
         }
 
         /// <summary>
@@ -64,12 +64,12 @@ namespace CsLoxByteCodeVm.Vm
         /// <returns>The value</returns>
         public LoxValue Peek(int distance)
         {
-            return _stack[(_top - 1) - distance];
+            return _stack[(Top - 1) - distance];
         }
 
         public LoxValue[] ToArray()
         {
-            int length = _top;
+            int length = Top;
             LoxValue[] r = new LoxValue[length];
             Array.Copy(_stack, 0, r, 0, length);
             return r;
